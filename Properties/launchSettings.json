@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "FolderPorter": {
+      "commandName": "Project",
+      "workingDirectory": "../FolderPorter"
+    }
+  }
+}

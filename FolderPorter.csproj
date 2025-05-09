@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>0.1.3</Version>
+    <Product>FolderPorter</Product>
+    <Authors>ZhangHuan0407</Authors>
+    <Company>ZeroBitCode</Company>
+    <PackageProjectUrl>https://github.com/ZhangHuan0407/FolderPorter</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/ZhangHuan0407/FolderPorter</RepositoryUrl>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="AppSettingsTemplate.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+</Project>

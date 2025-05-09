@@ -1,0 +1,8 @@
+.vs/*
+obj/*
+bin/*
+Properties/PublishProfiles/Linux-arm64.pubxml.user
+Properties/PublishProfiles/Linux-x86-64.pubxml.user
+Properties/PublishProfiles/Windows-x64.pubxml.user
+FolderPorter.csproj.user
+AppSettings.json
