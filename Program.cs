@@ -219,8 +219,9 @@ namespace FolderPorter
                 fileIndexToModel[fileSliceHashModel.FileIndex] = fileSliceHashModel;
                 string fileFullPath = $"{folderModel.RootPath}/{fileSliceHashModel.FileRelativePath}";
                 FileInfo fileInfo = new FileInfo(fileFullPath);
-                if (!fileInfo.FullName.StartsWith(folderModel.RootPath + "/"))
-                    throw new Exception($"FileRelativePath: {fileSliceHashModel.FileRelativePath}");
+                fileFullPath = fileInfo.FullName.Replace('\\', '/');
+                if (!fileFullPath.StartsWith(folderModel.RootPath + "/"))
+                    throw new Exception($"FileRelativePath: {fileSliceHashModel.FileRelativePath}, FileFullPath: {fileFullPath}");
                 FileSliceHashModel localModel;
                 if (!fileInfo.Exists)
                 {
@@ -237,7 +238,7 @@ namespace FolderPorter
                                                         ref crc32Buffer);
                     if (localModel.FileTotalLength != fileSliceHashModel.FileTotalLength)
                     {
-                        using (FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Write))
+                        using (FileStream fileStream = new FileStream(fileFullPath, FileMode.Open, FileAccess.Write))
                             fileStream.SetLength(fileSliceHashModel.FileTotalLength);
                     }
                 }
@@ -506,8 +507,8 @@ namespace FolderPorter
         {
             Console.WriteLine($"PullMode");
             ArgumentModel argsModel = ArgumentModel.Instance;
-            if (!AppSettingModel.Instance.RemoteDevice.TryGetValue(argsModel.PushRemoteDrive, out RemoteDeviceModel? remoteDeviceModel) ||
-                !AppSettingModel.Instance.LocalFolders.TryGetValue(argsModel.PushFolder, out FolderModel? folderModel))
+            if (!AppSettingModel.Instance.RemoteDevice.TryGetValue(argsModel.PullRemoteDrive, out RemoteDeviceModel? remoteDeviceModel) ||
+                !AppSettingModel.Instance.LocalFolders.TryGetValue(argsModel.PullFolder, out FolderModel? folderModel))
                 throw new Exception($"Not found drive:{argsModel.PushRemoteDrive} or not found folder: {argsModel.PushFolder}");
             if (!folderModel.CanWrite)
                 throw new Exception($"FolderModel.CanWrite => {folderModel.CanWrite}");

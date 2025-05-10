@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -8,8 +9,8 @@ namespace FolderPorter.Model
     [Serializable]
     public class AppSettingModel
     {
-        private const string AppSettingsTemplateFileName = "AppSettingsTemplate.json";
-        private const string AppSettingsFileName = "AppSettings.json";
+        private static string AppSettingsTemplateFileName = $"{Path.GetDirectoryName(Environment.ProcessPath)}/AppSettingsTemplate.json";
+        private static string AppSettingsFileName = $"{Path.GetDirectoryName(Environment.ProcessPath)}/AppSettings.json";
 
         internal static AppSettingModel Instance = new AppSettingModel();
 
