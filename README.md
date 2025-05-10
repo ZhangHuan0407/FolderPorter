@@ -61,10 +61,10 @@ sudo apt install dotnet-runtime-8.0
 ```
 cd /var
 wget -O /var/FolderPorter.zip download-url-here
-unzip FolderPorter.zip
+unzip FolderPorter.zip -d FolderPorter
 cd /lib
 mkdir FolderPorter
-mv /var/FolderPorter/* /lib/FolderPorter/
+mv /var/FolderPorter/Linux-*/* /lib/FolderPorter/
 cp /lib/FolderPorter/AppSettingsTemplate.json /lib/FolderPorter/AppSettings.json
 chmod +x /lib/FolderPorter
 chmod +x /lib/FolderPorter/FolderPorter
