@@ -45,7 +45,9 @@ namespace FolderPorter.Model
 
         public void CleanEmptyDirectory()
         {
-            CleanEmptyDirectory_Internal(RootPath);
+            string[] subDirectories = Directory.GetDirectories(directoryPath);
+            for (int i = 0; i < subDirectories.Length; i++)
+                CleanEmptyDirectory_Internal(subDirectories[i]);
         }
         private bool CleanEmptyDirectory_Internal(string directoryPath)
         {
