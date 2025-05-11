@@ -191,6 +191,8 @@ namespace FolderPorter
         {
             await Task.CompletedTask;
             NetworkStream networkStream = tcpClient.GetStream();
+            long transferTotalBytes = 0L;
+            Stopwatch transferStopwatch = Stopwatch.StartNew();
 
             byte[] crc32Buffer = null;
             byte[] buffer = new byte[SliceLength + 1024];
@@ -287,6 +289,9 @@ namespace FolderPorter
                     fileStream.Position = start;
                     await fileStream.WriteAsync(buffer, 0, bytesLength);
                 }
+                transferTotalBytes += bytesLength;
+                LogTransferState(i, requestModel.BytesTransferList.Count, transferTotalBytes, transferStopwatch,
+                                 fileSliceHashModel.FileRelativePath);
             }
             goto ReadNextTurn;
         SkipTransferBytes:
@@ -308,6 +313,14 @@ namespace FolderPorter
                 folderModel.CleanEmptyDirectory();
             }
             WriteModel(networkStream, buffer, transferFinishResponseModel);
+
+            string transferTime;
+            if (transferStopwatch.Elapsed.TotalHours > 2f)
+                transferTime = transferStopwatch.Elapsed.TotalHours.ToString("0.0") + " h";
+            else
+                transferTime = transferStopwatch.Elapsed.TotalMinutes.ToString("0.0") + " min";
+            Console.WriteLine($"Have recieve {(transferTotalBytes / 1024f / 1024f):0.00} mb bytes in {transferTime}");
+            Console.WriteLine($"Delete files count: {transferFinishResponseModel.DeleteFilesCount}");
         SkipTransferFinish:
 
             ;
@@ -482,44 +495,6 @@ namespace FolderPorter
                 }
             });
         }
-
-        private static string m_LastFileRelativePath;
-        private static void LogTransferState(int i, int total, long transferTotalLength, Stopwatch stopwatch, string fileRelativePath)
-        {
-            if (ArgumentModel.Instance.Server)
-                return;
-            if (i > 0 &&
-                m_LastFileRelativePath == fileRelativePath)
-                Console.Write("\r");
-            m_LastFileRelativePath = fileRelativePath;
-            double speed = transferTotalLength / stopwatch.Elapsed.TotalSeconds;
-            string unit;
-            if (speed > 1000000)
-            {
-                speed = speed / 1024 / 1024;
-                unit = "mb/s";
-            }
-            else if (speed > 1000)
-            {
-                speed = speed / 1024;
-                unit = "kb/s";
-            }
-            else
-                unit = "b/s";
-            string rightPart = $"Slice:[{i.ToString().PadLeft(2)}/{total.ToString().PadLeft(2)}] {speed:0.00} {unit}";
-            int maxLeftLength = Math.Clamp(Console.WindowWidth - rightPart.Length, 0, 255);
-            string leftPart;
-            if (fileRelativePath.Length <= maxLeftLength)
-                leftPart = fileRelativePath;
-            else
-            {
-                int trimLength = fileRelativePath.Length - maxLeftLength + 3;
-                trimLength = Math.Max(trimLength, 0);
-                leftPart = "..." + fileRelativePath.Substring(trimLength);
-            }
-            string logLine = leftPart.PadRight(maxLeftLength) + rightPart;
-            Console.Write(logLine);
-        }
         #endregion
 
         #region Pull
@@ -626,6 +601,44 @@ namespace FolderPorter
             }
             TModel requestModel = JsonSerializer.Deserialize<TModel>(modelStr)!;
             return requestModel;
+        }
+
+        private static string m_LastFileRelativePath;
+        private static void LogTransferState(int i, int total, long transferTotalLength, Stopwatch stopwatch, string fileRelativePath)
+        {
+            if (ArgumentModel.Instance.Server)
+                return;
+            if (i > 0 &&
+                m_LastFileRelativePath == fileRelativePath)
+                Console.Write("\r");
+            m_LastFileRelativePath = fileRelativePath;
+            double speed = transferTotalLength / stopwatch.Elapsed.TotalSeconds;
+            string unit;
+            if (speed > 1000000)
+            {
+                speed = speed / 1024 / 1024;
+                unit = "mb/s";
+            }
+            else if (speed > 1000)
+            {
+                speed = speed / 1024;
+                unit = "kb/s";
+            }
+            else
+                unit = "b/s";
+            string rightPart = $"Slice:[{i.ToString().PadLeft(2)}/{total.ToString().PadLeft(2)}] {speed:0.00} {unit}";
+            int maxLeftLength = Math.Clamp(Console.WindowWidth - rightPart.Length, 0, 255);
+            string leftPart;
+            if (fileRelativePath.Length <= maxLeftLength)
+                leftPart = fileRelativePath;
+            else
+            {
+                int trimLength = fileRelativePath.Length - maxLeftLength + 3;
+                trimLength = Math.Max(trimLength, 0);
+                leftPart = "..." + fileRelativePath.Substring(trimLength);
+            }
+            string logLine = leftPart.PadRight(maxLeftLength) + rightPart;
+            Console.Write(logLine);
         }
     }
 }
