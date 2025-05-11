@@ -63,7 +63,7 @@ namespace FolderPorter.Model
 
         public static void CopyAppSettings()
         {
-            Console.WriteLine("You dont have AppSettings.json file, copy a new file? y/n");
+            Console.WriteLine("You dont have AppSettings.json file, copy a new file? (y/n)");
             while (true)
             {
                 char keyChar = Console.ReadKey().KeyChar;
@@ -78,6 +78,8 @@ namespace FolderPorter.Model
                     Console.WriteLine();
                     return;
                 }
+                else
+                    Console.WriteLine("\r \r");
             }
         }
 

@@ -96,28 +96,52 @@ namespace FolderPorter.Model
                 return;
             }
 
-            Console.WriteLine("select one of remote drive:");
+            Console.WriteLine("select one of remote drive (input name or number):");
+            List<string> remoteDeviceList = new List<string>();
             foreach (string remoteDevice in AppSettingModel.Instance.RemoteDevice.Keys)
-                Console.WriteLine(remoteDevice);
+            {
+                Console.WriteLine($"[{remoteDeviceList.Count.ToString().PadLeft(2)}] {remoteDevice}");
+                remoteDeviceList.Add(remoteDevice);
+            }
             string inputRemoteDevice;
             while (true)
             {
-                inputRemoteDevice = Console.ReadLine()!.Trim();
-                if (!AppSettingModel.Instance.RemoteDevice.ContainsKey(inputRemoteDevice))
-                    continue;
-                break;
+                string input = Console.ReadLine()!.Trim();
+                if (AppSettingModel.Instance.RemoteDevice.ContainsKey(input))
+                {
+                    inputRemoteDevice = input;
+                    break;
+                }
+                if (int.TryParse(input, out int index) &&
+                    index >= 0 && index < remoteDeviceList.Count)
+                {
+                    inputRemoteDevice = remoteDeviceList[index];
+                    break;
+                }
             }
 
-            Console.WriteLine("select one of folder:");
+            Console.WriteLine("select one of folder (input name or number):");
+            List<string> folderList = new List<string>();
             foreach (string folder in AppSettingModel.Instance.LocalFolders.Keys)
-                Console.WriteLine(folder);
+            {
+                Console.WriteLine($"[{folderList.Count.ToString().PadLeft(2)}] {folder}");
+                folderList.Add(folder);
+            }
             string inputFolder;
             while (true)
             {
-                inputFolder = Console.ReadLine()!.Trim();
-                if (!AppSettingModel.Instance.LocalFolders.ContainsKey(inputFolder))
-                    continue;
-                break;
+                string input = Console.ReadLine()!.Trim();
+                if (AppSettingModel.Instance.LocalFolders.ContainsKey(input))
+                {
+                    inputFolder = input;
+                    break;
+                }
+                if (int.TryParse(input, out int index) &&
+                    index >= 0 && index < folderList.Count)
+                {
+                    inputFolder = folderList[index];
+                    break;
+                }
             }
 
             if (type == Program.PushType)
@@ -129,6 +153,23 @@ namespace FolderPorter.Model
             {
                 PullRemoteDrive = inputRemoteDevice;
                 PullFolder = inputFolder;
+            }
+
+            Console.WriteLine("ensure command (y/n):");
+            Console.WriteLine($"{type}@{inputRemoteDevice}:{inputFolder}");
+
+            while (true)
+            {
+                char keyChar = Console.ReadKey().KeyChar;
+                if (keyChar == 'y')
+                {
+                    Console.WriteLine();
+                    return;
+                }
+                else if (keyChar == 'n')
+                    throw new Exception("User Cancel");
+                else
+                    Console.WriteLine("\r \r");
             }
         }
     }
