@@ -126,6 +126,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - RootPath is the disk path of this folder, using / for both Windows and Linux; otherwise, there may be execution errors.
   - CanWrite indicates whether this folder accepts Push from remote devices (or Pull locally).
   - CanRead indicates whether this folder accepts Pull from remote devices (or Push locally).
+  - VersionControl Whether the folder has version control enabled. Please enable/disable this configuration when the folder is empty.
 - RemoteDevice lists all accessible remote devices, with the key being the remote device name.
   - IP is the IP + port that the remote device listens to in server mode.
   - IP2 When the IP is unreachable, automatically try IP2. Not configured, not enabled.
@@ -146,12 +147,14 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
     "RegexGameWebGL": {
       "RootPath": "D:/RegexGame/Builds/WebGL Github/RegexGame",
       "CanWrite": true,
-      "CanRead": true
+      "CanRead": true,
+      "VersionControl": false
     },
     "TestFolder": {
       "RootPath": "/var/TestFolder",
       "CanWrite": true,
-      "CanRead": true
+      "CanRead": true,
+      "VersionControl": false
     }
   },
   "RemoteDevice": {

@@ -130,6 +130,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - RootPath 为此文件夹的磁盘路径，Windows 和 Linux 均使用 /，否则可能执行报错
   - CanWrite 此文件夹是否接受远程设备的 Push(或本地Pull)
   - CanRead 此文件夹是否接受远程设备的 Pull(或本地Push)
+  - VersionControl 文件夹是否启用版本控制。请在空文件夹状态下启用/关闭该配置。
 - RemoteDevice 列举所有可访问的远程设备，key为远程设备名称
   - IP 为远程设备 server 模式监听的IP+端口。不配置不启用
   - IP2 当 IP 不可达时，自动尝试 IP2。不配置不启用
@@ -154,12 +155,14 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
     "RegexGameWebGL": {
       "RootPath": "D:/RegexGame/Builds/WebGL Github/RegexGame",
       "CanWrite": true,
-      "CanRead": true
+      "CanRead": true,
+      "VersionControl": false
     },
     "TestFolder": {
       "RootPath": "/var/TestFolder",
       "CanWrite": true,
-      "CanRead": true
+      "CanRead": true,
+      "VersionControl": false
     }
   },
   "RemoteDevice": {
