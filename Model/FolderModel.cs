@@ -52,11 +52,11 @@ namespace FolderPorter.Model
                 if (!lastFileInfo.Exists)
                     return;
                 FileInfo currentFileInfo = ConvertToCurrentFileInfo(fileRelativePath);
-                Directory.CreateDirectory(currentFileInfo.DirectoryName, Program.DirectoryUnixFileMode);
+                SystemIOAPI.CreateDirectory(currentFileInfo.DirectoryName!, Program.DirectoryUnixFileMode);
                 if (lastFileInfo.Length <= trimFileLength)
                 {
                     File.Copy(lastFileInfo.FullName, currentFileInfo.FullName, true);
-                    currentFileInfo.UnixFileMode = Program.FileUnixFileMode;
+                    SystemIOAPI.SetFileMode(currentFileInfo, Program.FileUnixFileMode);
                     return;
                 }
                 m_Buffer ??= new byte[4096 * 10];
@@ -73,7 +73,7 @@ namespace FolderPorter.Model
                         currentFileStream.SetLength(trimFileLength);
                     }
                 }
-                currentFileInfo.UnixFileMode = Program.FileUnixFileMode;
+                SystemIOAPI.SetFileMode(currentFileInfo, Program.FileUnixFileMode);
             }
         }
 
@@ -167,14 +167,14 @@ namespace FolderPorter.Model
             }
         }
 
-        public void StartNewVersion(EndPoint remoteEndPoint)
+        public void StartNewVersion(EndPoint? remoteEndPoint)
         {
             if (VersionControl &&
                 m_VersionControlModel != null)
             {
                 m_VersionControlModel.Version++;
                 m_VersionControlModel.TransferLog.Add($"start {m_VersionControlModel.Version} {DateTime.Now} {remoteEndPoint}");
-                Directory.CreateDirectory($"{RootPath}/{m_VersionControlModel.Version}", Program.DirectoryUnixFileMode);
+                SystemIOAPI.CreateDirectory($"{RootPath}/{m_VersionControlModel.Version}", Program.DirectoryUnixFileMode);
                 SaveVersionControl();
             }
         }

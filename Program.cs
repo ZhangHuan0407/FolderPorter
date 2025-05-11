@@ -277,9 +277,9 @@ namespace FolderPorter
                 FileInfo fileInfo = folderModel.ConvertToCurrentFileInfo(fileSliceHashModel.FileRelativePath);
                 if (!fileInfo.Exists)
                 {
-                    Directory.CreateDirectory(fileInfo.DirectoryName, DirectoryUnixFileMode);
+                    SystemIOAPI.CreateDirectory(fileInfo.DirectoryName!, DirectoryUnixFileMode);
                     fileInfo.Create().Dispose();
-                    fileInfo.UnixFileMode = FileUnixFileMode;
+                    SystemIOAPI.SetFileMode(fileInfo, FileUnixFileMode);
                 }
                 using (FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite))
                 {
