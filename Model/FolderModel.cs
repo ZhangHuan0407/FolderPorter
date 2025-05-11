@@ -1,4 +1,6 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace FolderPorter.Model
 {
@@ -8,13 +10,84 @@ namespace FolderPorter.Model
         public string RootPath { get; set; }
         public bool CanWrite { get; set; }
         public bool CanRead { get; set; }
+        public bool VersionControl { get; set; }
+
+        private string VersionControlFilePath => $"{RootPath}/{Program.VersionControlFile}";
+        private VersionControlModel? m_VersionControlModel;
 
         [JsonIgnore]
         public string Folder { get; set; }
 
+        private byte[]? m_Buffer;
+
+        public FolderModel()
+        {
+        }
+
+        public FileInfo ConvertToLastSuccessFileInfo(string fileRelativePath) => ConvertToFileInfo(fileRelativePath, true);
+        public FileInfo ConvertToCurrentFileInfo(string fileRelativePath) => ConvertToFileInfo(fileRelativePath, false);
+        private FileInfo ConvertToFileInfo(string fileRelativePath, bool lastSuccessVersion)
+        {
+            string directoryPath;
+            if (VersionControl && lastSuccessVersion)
+                directoryPath = $"{RootPath}/{m_VersionControlModel!.LastSuccessVersion}/";
+            else if (VersionControl && !lastSuccessVersion)
+                directoryPath = $"{RootPath}/{m_VersionControlModel!.Version}/";
+            else
+                directoryPath = $"{RootPath}/";
+            string fileFullPath = $"{directoryPath}{fileRelativePath}";
+            FileInfo fileInfo = new FileInfo(fileFullPath);
+            fileFullPath = fileInfo.FullName.Replace('\\', '/');
+            if (!fileFullPath.StartsWith(directoryPath))
+                throw new Exception($"FileRelativePath: {fileRelativePath}, FileFullPath: {fileFullPath}");
+            return fileInfo;
+        }
+
+        public void CopyFileFromOldVersion(string fileRelativePath, long trimFileLength)
+        {
+            if (VersionControl &&
+                m_VersionControlModel != null)
+            {
+                FileInfo lastFileInfo = ConvertToLastSuccessFileInfo(fileRelativePath);
+                if (!lastFileInfo.Exists)
+                    return;
+                FileInfo currentFileInfo = ConvertToCurrentFileInfo(fileRelativePath);
+                Directory.CreateDirectory(currentFileInfo.DirectoryName, Program.DirectoryUnixFileMode);
+                if (lastFileInfo.Length <= trimFileLength)
+                {
+                    File.Copy(lastFileInfo.FullName, currentFileInfo.FullName, true);
+                    currentFileInfo.UnixFileMode = Program.FileUnixFileMode;
+                    return;
+                }
+                m_Buffer ??= new byte[4096 * 10];
+                using (FileStream lastFileStream = lastFileInfo.OpenRead())
+                {
+                    using (FileStream currentFileStream = new FileStream(currentFileInfo.FullName, FileMode.Create, FileAccess.Write))
+                    {
+                        while (lastFileStream.Position < lastFileStream.Length &&
+                            lastFileStream.Position < trimFileLength)
+                        {
+                            int readBytesCount = lastFileStream.Read(m_Buffer, 0, m_Buffer.Length);
+                            currentFileStream.Write(m_Buffer, 0, readBytesCount);
+                        }
+                        currentFileStream.SetLength(trimFileLength);
+                    }
+                }
+                currentFileInfo.UnixFileMode = Program.FileUnixFileMode;
+            }
+        }
+
         public IEnumerable<(string fileRelativePath, FileInfo fileInfo)> EnumFiles()
         {
-            string prefixStr = new DirectoryInfo(RootPath).FullName.Replace("\\", "/");
+            DirectoryInfo directoryInfo;
+            if (VersionControl)
+                directoryInfo = new DirectoryInfo($"{RootPath}/{m_VersionControlModel!.LastSuccessVersion}");
+            else
+                directoryInfo = new DirectoryInfo(RootPath);
+            string prefixStr = directoryInfo.FullName.Replace("\\", "/");
+
+            if (!Directory.Exists(prefixStr))
+                yield break;
 
             string[] filePathList = Directory.GetFiles(prefixStr, "*", new EnumerationOptions()
             {
@@ -32,6 +105,8 @@ namespace FolderPorter.Model
 
         public int CleanFifthWheelFiles(HashSet<string> fileRelativePathSet)
         {
+            if (VersionControl)
+                throw new InvalidOperationException($"CleanFifthWheelFiles, VersionControl: {VersionControl}");
             int deleteFilesCount = 0;
             foreach ((string fileRelativePath, FileInfo fileInfo) in EnumFiles())
             {
@@ -45,7 +120,7 @@ namespace FolderPorter.Model
 
         public void CleanEmptyDirectory()
         {
-            string[] subDirectories = Directory.GetDirectories(directoryPath);
+            string[] subDirectories = Directory.GetDirectories(RootPath);
             for (int i = 0; i < subDirectories.Length; i++)
                 CleanEmptyDirectory_Internal(subDirectories[i]);
         }
@@ -71,6 +146,62 @@ namespace FolderPorter.Model
                 return true;
             }
             return false;
+        }
+
+        public void LoadVersionControl()
+        {
+            if (!VersionControl)
+            {
+                m_VersionControlModel = null;
+                return;
+            }
+            if (!File.Exists(VersionControlFilePath))
+            {
+                Console.WriteLine($"Not found {Program.VersionControlFile}, create new one.");
+                m_VersionControlModel = new VersionControlModel();
+            }
+            else
+            {
+                string versionControlStr = File.ReadAllText(VersionControlFilePath);
+                m_VersionControlModel = JsonSerializer.Deserialize<VersionControlModel>(versionControlStr)!;
+            }
+        }
+
+        public void StartNewVersion(EndPoint remoteEndPoint)
+        {
+            if (VersionControl &&
+                m_VersionControlModel != null)
+            {
+                m_VersionControlModel.Version++;
+                m_VersionControlModel.TransferLog.Add($"start {m_VersionControlModel.Version} {DateTime.Now} {remoteEndPoint}");
+                Directory.CreateDirectory($"{RootPath}/{m_VersionControlModel.Version}", Program.DirectoryUnixFileMode);
+                SaveVersionControl();
+            }
+        }
+
+        public void SaveFinishVersion()
+        {
+            if (VersionControl &&
+                m_VersionControlModel != null)
+            {
+                m_VersionControlModel.LastSuccessVersion = m_VersionControlModel.Version;
+                m_VersionControlModel.TransferLog.Add($"finish {m_VersionControlModel.Version} {DateTime.Now}");
+                SaveVersionControl();
+            }
+            m_Buffer = null;
+        }
+        public void SaveVersionControl()
+        {
+            if (VersionControl &&
+                m_VersionControlModel != null)
+            {
+                JsonSerializerOptions options = new JsonSerializerOptions()
+                {
+                    WriteIndented = true,
+                };
+                string versionControlStr = JsonSerializer.Serialize(m_VersionControlModel, options);
+                File.WriteAllText(VersionControlFilePath, versionControlStr);
+            }
         }
     }
 }

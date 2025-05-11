@@ -19,6 +19,8 @@ namespace FolderPorter
         internal const string PullType = "pull";
         internal const string PushType = "push";
 
+        internal const string VersionControlFile = ".VersionControl.json";
+
         internal readonly static UnixFileMode DirectoryUnixFileMode = UnixFileMode.UserRead |
                                                                       UnixFileMode.UserWrite |
                                                                       UnixFileMode.UserExecute |
@@ -109,7 +111,7 @@ namespace FolderPorter
                                         await PushFolderAsync(networkStream, folderModel, tokenSource.Token);
                                     }
                                     else if (requestModel.Type == PushType)
-                                        await AcceptPushFolderAsync(tcpClient);
+                                        await AcceptPushFolderAsync(tcpClient, requestModel.Folder);
                                     else
                                         throw new Exception($"Unknown type: {requestModel.Type}");
                                 }
@@ -185,7 +187,7 @@ namespace FolderPorter
             }
         }
 
-        private static async Task AcceptPushFolderAsync(TcpClient tcpClient)
+        private static async Task AcceptPushFolderAsync(TcpClient tcpClient, string folder)
         {
             await Task.CompletedTask;
             NetworkStream networkStream = tcpClient.GetStream();
@@ -196,6 +198,16 @@ namespace FolderPorter
 
             Dictionary<int, FileSliceHashModel> fileIndexToModel = new Dictionary<int, FileSliceHashModel>();
             int turn = 0;
+            if (AppSettingModel.Instance.LocalFolders.TryGetValue(folder, out FolderModel folderModel))
+            {
+                folderModel.LoadVersionControl();
+                folderModel.StartNewVersion(tcpClient.Client.RemoteEndPoint);
+            }
+            else
+            {
+                tcpClient.Client.Disconnect(false);
+                return;
+            }
         ReadNextTurn:
             turn++;
             if (turn % 50 == 49)
@@ -203,7 +215,7 @@ namespace FolderPorter
 
             // read PushFolderRequestModel
             PushFolderRequestModel requestModel = await ReadModelAsync<PushFolderRequestModel>(networkStream, buffer);
-            if (!AppSettingModel.Instance.LocalFolders.TryGetValue(requestModel.Folder, out FolderModel folderModel))
+            if (requestModel.Folder != folder)
             {
                 tcpClient.Client.Disconnect(false);
                 return;
@@ -217,19 +229,12 @@ namespace FolderPorter
             {
                 FileSliceHashModel fileSliceHashModel = requestModel.FileSliceHashList[i];
                 fileIndexToModel[fileSliceHashModel.FileIndex] = fileSliceHashModel;
-                string fileFullPath = $"{folderModel.RootPath}/{fileSliceHashModel.FileRelativePath}";
-                FileInfo fileInfo = new FileInfo(fileFullPath);
-                fileFullPath = fileInfo.FullName.Replace('\\', '/');
-                if (!fileFullPath.StartsWith(folderModel.RootPath + "/"))
-                    throw new Exception($"FileRelativePath: {fileSliceHashModel.FileRelativePath}, FileFullPath: {fileFullPath}");
+                if (folderModel.VersionControl)
+                    folderModel.CopyFileFromOldVersion(fileSliceHashModel.FileRelativePath, fileSliceHashModel.FileTotalLength);
+                FileInfo fileInfo = folderModel.ConvertToCurrentFileInfo(fileSliceHashModel.FileRelativePath);
                 FileSliceHashModel localModel;
                 if (!fileInfo.Exists)
-                {
                     localModel = null;
-                    Directory.CreateDirectory(fileInfo.DirectoryName, DirectoryUnixFileMode);
-                    fileInfo.Create().Dispose();
-                    fileInfo.UnixFileMode = FileUnixFileMode;
-                }
                 else
                 {
                     localModel = new FileSliceHashModel(fileSliceHashModel.FileIndex,
@@ -238,7 +243,7 @@ namespace FolderPorter
                                                         ref crc32Buffer);
                     if (localModel.FileTotalLength != fileSliceHashModel.FileTotalLength)
                     {
-                        using (FileStream fileStream = new FileStream(fileFullPath, FileMode.Open, FileAccess.Write))
+                        using (FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Write))
                             fileStream.SetLength(fileSliceHashModel.FileTotalLength);
                     }
                 }
@@ -269,8 +274,14 @@ namespace FolderPorter
                 int bytesLength = ByteEncoder.ReadInt(buffer, ref pointer);
                 pointer = 0;
                 await networkStream.ReadExactlyAsync(buffer, pointer, bytesLength);
-                string fileFullPath = $"{folderModel.RootPath}/{fileSliceHashModel.FileRelativePath}";
-                using (FileStream fileStream = new FileStream(fileFullPath, FileMode.Open, FileAccess.ReadWrite))
+                FileInfo fileInfo = folderModel.ConvertToCurrentFileInfo(fileSliceHashModel.FileRelativePath);
+                if (!fileInfo.Exists)
+                {
+                    Directory.CreateDirectory(fileInfo.DirectoryName, DirectoryUnixFileMode);
+                    fileInfo.Create().Dispose();
+                    fileInfo.UnixFileMode = FileUnixFileMode;
+                }
+                using (FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite))
                 {
                     int start = fileAnchor.SliceIndex * SliceLength;
                     fileStream.Position = start;
@@ -282,12 +293,20 @@ namespace FolderPorter
 
             if (!requestModel.TransferFinish)
                 goto SkipTransferFinish;
-            HashSet<string> fileRelativePathSet = new HashSet<string>();
-            foreach (FileSliceHashModel fileSliceHashModel in fileIndexToModel.Values)
-                fileRelativePathSet.Add(fileSliceHashModel.FileRelativePath);
-            PushFolderResponseModel transferFinishResponseModel = new PushFolderResponseModel();
-            transferFinishResponseModel.DeleteFilesCount = folderModel.CleanFifthWheelFiles(fileRelativePathSet);
-            folderModel.CleanEmptyDirectory();
+            PushFolderResponseModel transferFinishResponseModel = new PushFolderResponseModel()
+            {
+                TransferFinish = true,
+            };
+            if (folderModel.VersionControl)
+                folderModel.SaveFinishVersion();
+            else
+            {
+                HashSet<string> fileRelativePathSet = new HashSet<string>();
+                foreach (FileSliceHashModel fileSliceHashModel in fileIndexToModel.Values)
+                    fileRelativePathSet.Add(fileSliceHashModel.FileRelativePath);
+                transferFinishResponseModel.DeleteFilesCount = folderModel.CleanFifthWheelFiles(fileRelativePathSet);
+                folderModel.CleanEmptyDirectory();
+            }
             WriteModel(networkStream, buffer, transferFinishResponseModel);
         SkipTransferFinish:
 
@@ -338,6 +357,7 @@ namespace FolderPorter
 
             // calculate file hash in task
             Queue<FileSliceHashModel> waitingSyncFileList = new Queue<FileSliceHashModel>();
+            folderModel.LoadVersionControl();
             Task calculateFileHashTask = CalculateFileSliceHashAsync(folderModel, waitingSyncFileList, cancellationToken);
             long transferTotalBytes = 0L;
             Stopwatch transferStopwatch = Stopwatch.StartNew();
@@ -388,15 +408,15 @@ namespace FolderPorter
                     WriteModel(networkStream, buffer, requestModel);
                 }
 
-                // send byte[]
+                // send byte[] to remote drive
                 for (int i = 0; i < responseModel.NeedSyncList.Count; i++)
                 {
                     FileAnchor fileAnchor = responseModel.NeedSyncList[i];
                     FileSliceHashModel fileSliceHashModel = fileSliceHashList.First(model => model.FileIndex == fileAnchor.FileIndex);
                     long start = fileAnchor.SliceIndex * SliceLength;
                     int length = (int)Math.Min(fileSliceHashModel.FileTotalLength - start, SliceLength);
-                    string fileFullPath = $"{folderModel.RootPath}/{fileSliceHashModel.FileRelativePath}";
-                    using FileStream fileStream = new FileStream(fileFullPath, FileMode.Open, FileAccess.Read);
+                    FileInfo fileInfo = folderModel.ConvertToLastSuccessFileInfo(fileSliceHashModel.FileRelativePath);
+                    using FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read);
                     fileStream.Position = start;
                     pointer = 4;
                     await fileStream.ReadExactlyAsync(buffer, pointer, length);
@@ -525,7 +545,7 @@ namespace FolderPorter
                 {
                     await VerifyRemotePasswordAsync(networkStream, remoteDeviceModel.DevicePassword);
                     await SendOptionAsync(networkStream, PullType, folderModel.Folder);
-                    await AcceptPushFolderAsync(tcpClient);
+                    await AcceptPushFolderAsync(tcpClient, folderModel.Folder);
                 }
                 catch (Exception ex)
                 {
