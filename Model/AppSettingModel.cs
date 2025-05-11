@@ -32,6 +32,7 @@ namespace FolderPorter.Model
 
         public int ListernPort { get; set; }
 
+        public bool LogDebug { get; set; }
         public bool LogProtocal { get; set; }
 
         public static bool IsTemplate;
@@ -54,10 +55,7 @@ namespace FolderPorter.Model
             foreach (KeyValuePair<string, FolderModel> pair in appSettingModel.LocalFolders)
                 pair.Value.Folder = pair.Key;
             foreach (KeyValuePair<string, RemoteDeviceModel> pair in appSettingModel.RemoteDevice)
-            {
                 pair.Value.DeviceName = pair.Key;
-                pair.Value.IPEndPoint = IPEndPoint.Parse(pair.Value.IP);
-            }
 
             appSettingModel.RemoteBuzyRetryTimeSpan = TimeSpan.FromSeconds(appSettingModel.RemoteBuzyRetrySeconds);
             Instance = appSettingModel;

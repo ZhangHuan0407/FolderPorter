@@ -21,6 +21,7 @@
 - [Push 使用流程](#push-使用流程)
 - [Pull 使用流程](#pull-使用流程)
 - [集群部署](#集群部署)
+- [多网段切换](#多网段切换)
 
 # 架构支持
 |                                                                   | Windows x86 | Windows x86-64 | Windows arm64 | Linux arm64 | Linux x86-64 | MacOS x86-64 | MacOS M1 |
@@ -124,20 +125,26 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
 
 # 更新 AppSettings.json
 ## 需要设置的配置
-- Password是当前驱动器上运行的应用程序的密码。长度限制: 1000
-- LocalFolders列举所有绑定的文件夹，key为文件夹名称
-  - RootPath为此文件夹的磁盘路径，Windows 和 Linux 均使用 /，否则可能执行报错
-  - CanWrite此文件夹是否接受远程设备的Push(或本地Pull)
-  - CanRead此文件夹是否接受远程设备的Pull(或本地Push)
-- RemoteDevice列举所有可访问的远程设备，key为远程设备名称
-  - IP为远程设备server模式监听的IP+端口
-  - DevicePassword为远程设备AppSettings.json的Password
+- Password 是当前驱动器上运行的应用程序的密码。长度限制: 1000
+- LocalFolders 列举所有绑定的文件夹，key 为文件夹名称
+  - RootPath 为此文件夹的磁盘路径，Windows 和 Linux 均使用 /，否则可能执行报错
+  - CanWrite 此文件夹是否接受远程设备的 Push(或本地Pull)
+  - CanRead 此文件夹是否接受远程设备的 Pull(或本地Push)
+- RemoteDevice 列举所有可访问的远程设备，key为远程设备名称
+  - IP 为远程设备 server 模式监听的IP+端口。不配置不启用
+  - IP2 当 IP 不可达时，自动尝试 IP2。不配置不启用
+  - DomainPort 当 IP 与 IP2 均不可达时，自动尝试 DomainPort。不配置不启用
+  - DevicePassword 为远程设备 AppSettings.json 的 Password
 
 ## 默认参数，不调也能用
-- MaxWorkerThreadCount线程池的运算线程数量上限
-- MaxIOThreadCount线程池的IO线程数量上限
-- RemoteBuzyRetrySeconds当远程设备处于繁忙状态，延迟此时间后重试
-- ConnectTimeoutSeconds连接超时时间
+- MaxWorkerThreadCount 线程池的运算线程数量上限
+- MaxIOThreadCount 线程池的IO线程数量上限
+- RemoteBuzyRetrySeconds 当远程设备处于繁忙状态，延迟此时间后重试
+- ConnectTimeoutSeconds 连接超时时间
+- ListernPort server 模式下监听的端口
+
+- LogDebug 输出调试日志
+- LogProtocal 输出协议日志
 
 ## AppSettings.json 模板
 ```
@@ -158,6 +165,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   "RemoteDevice": {
     "raspberry": {
       "IP": "192.168.1.3:17979",
+      "IP2": "192.168.2.3:17979",
+      "DomainPort": "yyy.com:17979",
       "DevicePassword": "d0d642fb-b77d-4e32-b77d-2444cd8788c3"
     }
   },
@@ -168,7 +177,10 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   "RemoteBuzyRetrySeconds": 5,
   "ConnectTimeoutSeconds": 30,
 
-  "ListernPort": 17979
+  "ListernPort": 17979,
+
+  "LogDebug": false,
+  "LogProtocal": false
 }
 ```
 
@@ -248,3 +260,10 @@ PC_4[Computer C]--pull-->PC_1
 
 - 为了避免多线程操作文件报错
 - 当前 Computer A B C 无法并行作业，会自动排队等待
+
+# 多网段切换
+- 可能当前设备和目标设备，同时连接了多个网段，比如同时连接有线eth0和无线wifi
+- 可以将有线配置在 RemoteDevice.PC_1.IP
+- 将无线配置在 RemoteDevice.PC_1.IP2
+- 每次 pull/push 时优先尝试使用 IP
+- 如果 IP 不可达(有线传输断开) 则尝试 IP2

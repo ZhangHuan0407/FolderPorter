@@ -21,6 +21,7 @@
 - [How to Push](#how-to-push)
 - [How to Pull](#how-to-pull)
 - [Cluster Deployment](#cluster-deployment)
+- [Multi-network Segment Switching](#multi-network-segment-switching)
 
 # Support
 |                                                                   | Windows x86 | Windows x86-64 | Windows arm64 | Linux arm64 | Linux x86-64 | MacOS x86-64 | MacOS M1 |
@@ -127,6 +128,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - CanRead indicates whether this folder accepts Pull from remote devices (or Push locally).
 - RemoteDevice lists all accessible remote devices, with the key being the remote device name.
   - IP is the IP + port that the remote device listens to in server mode.
+  - IP2 When the IP is unreachable, automatically try IP2. Not configured, not enabled.
+  - DomainPort When both IP and IP2 are unreachable, automatically try DomainPort. Not configured, not enabled.
   - DevicePassword is the Password from the remote device's AppSettings.json.
 
 ## Default parameters, can be used without adjustment.
@@ -154,6 +157,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   "RemoteDevice": {
     "raspberry": {
       "IP": "192.168.1.3:17979",
+      "IP2": "192.168.2.3:17979",
+      "DomainPort": "yyy.com:17979",
       "DevicePassword": "d0d642fb-b77d-4e32-b77d-2444cd8788c3"
     }
   },
@@ -164,7 +169,10 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   "RemoteBuzyRetrySeconds": 5,
   "ConnectTimeoutSeconds": 30,
 
-  "ListernPort": 17979
+  "ListernPort": 17979,
+  
+  "LogDebug": false,
+  "LogProtocal": false
 }
 ```
 
@@ -242,3 +250,10 @@ PC_4[Computer C]--pull-->PC_1
 ```
 - To avoid errors caused by multi-threaded file operations
 - Currently, Computers A, B, and C cannot operate in parallel and will automatically queue to wait.
+
+# Multi-network Segment Switching
+- The current device and the target device may be connected to multiple networks at the same time, for example, connecting to both wired eth0 and wireless Wi-Fi.
+- The wired connection can be configured in RemoteDevice.PC_1.IP.
+- The wireless connection can be configured in RemoteDevice.PC_1.IP2.
+- Every time you pull/push, it will prioritize using IP.
+- If IP is unreachable (wired transmission is disconnected), then it will try IP2.

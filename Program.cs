@@ -308,9 +308,9 @@ namespace FolderPorter
             if (!Directory.Exists(folderModel.RootPath))
                 throw new DirectoryNotFoundException($"Folder: {folderModel.Folder}, RootPath: {folderModel.RootPath}");
 
-            using TcpClient tcpClient = new TcpClient();
-            AppSettingModel.Instance.SetTcpClientParameter(tcpClient);
-            tcpClient.Connect(remoteDeviceModel.IPEndPoint);
+            using TcpClient tcpClient = remoteDeviceModel.TryConnect();
+            if (tcpClient == null)
+                throw new Exception($"Can not connect to {remoteDeviceModel.DeviceName}");
             using NetworkStream networkStream = tcpClient.GetStream();
             using CancellationTokenSource tokenSource = new CancellationTokenSource();
 
@@ -512,8 +512,10 @@ namespace FolderPorter
                 throw new Exception($"Not found drive:{argsModel.PushRemoteDrive} or not found folder: {argsModel.PushFolder}");
             if (!folderModel.CanWrite)
                 throw new Exception($"FolderModel.CanWrite => {folderModel.CanWrite}");
-            using TcpClient tcpClient = new TcpClient();
-            tcpClient.Connect(remoteDeviceModel.IPEndPoint);
+
+            using TcpClient tcpClient = remoteDeviceModel.TryConnect();
+            if (tcpClient == null)
+                throw new Exception($"Can not connect to {remoteDeviceModel.DeviceName}");
             using NetworkStream networkStream = tcpClient.GetStream();
             using CancellationTokenSource tokenSource = new CancellationTokenSource();
 
