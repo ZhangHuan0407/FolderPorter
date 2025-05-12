@@ -24,23 +24,31 @@ namespace FolderPorter.Model
         {
         }
 
-        public FileInfo ConvertToLastSuccessFileInfo(string fileRelativePath) => ConvertToFileInfo(fileRelativePath, true);
-        public FileInfo ConvertToCurrentFileInfo(string fileRelativePath) => ConvertToFileInfo(fileRelativePath, false);
-        private FileInfo ConvertToFileInfo(string fileRelativePath, bool lastSuccessVersion)
+        public FileInfo ConvertToLastSuccessFileInfo(string fileRelativePath) =>
+            ConvertToFileInfo(fileRelativePath, m_VersionControlModel?.LastSuccessVersion ?? string.Empty);
+
+        public FileInfo ConvertToCurrentFileInfo(string fileRelativePath) =>
+            ConvertToFileInfo(fileRelativePath, m_VersionControlModel?.Version ?? string.Empty);
+
+        private FileInfo ConvertToFileInfo(string fileRelativePath, string version)
         {
-            string directoryPath;
-            if (VersionControl && lastSuccessVersion)
-                directoryPath = $"{RootPath}/{m_VersionControlModel!.LastSuccessVersion}/";
-            else if (VersionControl && !lastSuccessVersion)
-                directoryPath = $"{RootPath}/{m_VersionControlModel!.Version}/";
-            else
-                directoryPath = $"{RootPath}/";
+            string directoryPath = ConvertToDirectoryPath(version);
             string fileFullPath = $"{directoryPath}{fileRelativePath}";
             FileInfo fileInfo = new FileInfo(fileFullPath);
             fileFullPath = fileInfo.FullName.Replace('\\', '/');
             if (!fileFullPath.StartsWith(directoryPath))
                 throw new Exception($"FileRelativePath: {fileRelativePath}, FileFullPath: {fileFullPath}");
             return fileInfo;
+        }
+
+        public string ConvertToDirectoryPath(string version)
+        {
+            string directoryPath;
+            if (VersionControl && !string.IsNullOrEmpty(version))
+                directoryPath = $"{RootPath}/{version[..8]}/";
+            else
+                directoryPath = $"{RootPath}/";
+            return directoryPath;
         }
 
         public void CopyFileFromOldVersion(string fileRelativePath, long trimFileLength)
@@ -79,12 +87,9 @@ namespace FolderPorter.Model
 
         public IEnumerable<(string fileRelativePath, FileInfo fileInfo)> EnumFiles()
         {
-            DirectoryInfo directoryInfo;
-            if (VersionControl)
-                directoryInfo = new DirectoryInfo($"{RootPath}/{m_VersionControlModel!.LastSuccessVersion}");
-            else
-                directoryInfo = new DirectoryInfo(RootPath);
-            string prefixStr = directoryInfo.FullName.Replace("\\", "/");
+            if (string.IsNullOrEmpty(version))
+                version = m_VersionControlModel?.LastSuccessVersion;
+            string prefixStr = ConvertToDirectoryPath(version ?? string.Empty);
 
             if (!Directory.Exists(prefixStr))
                 yield break;
@@ -98,7 +103,7 @@ namespace FolderPorter.Model
             {
                 string filePath = filePathList[i].Replace("\\", "/");
                 FileInfo fileInfo = new FileInfo(filePath);
-                string fileRelativePath = filePath.Substring(prefixStr.Length + 1);
+                string fileRelativePath = filePath.Substring(prefixStr.Length);
                 yield return (fileRelativePath, fileInfo);
             }
         }
@@ -172,9 +177,9 @@ namespace FolderPorter.Model
             if (VersionControl &&
                 m_VersionControlModel != null)
             {
-                m_VersionControlModel.Version++;
+                m_VersionControlModel.Version = Guid.NewGuid().ToString().Replace("-", string.Empty);
                 Console.WriteLine($"start {m_VersionControlModel.Version} {DateTime.Now} {remoteUser} {remoteEndPoint}");
-                SystemIOAPI.CreateDirectory($"{RootPath}/{m_VersionControlModel.Version}", Program.DirectoryUnixFileMode);
+                SystemIOAPI.CreateDirectory(ConvertToDirectoryPath(m_VersionControlModel.Version), Program.DirectoryUnixFileMode);
                 SaveVersionControl();
             }
         }

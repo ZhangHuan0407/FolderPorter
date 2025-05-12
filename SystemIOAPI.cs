@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-
-namespace FolderPorter
+﻿namespace FolderPorter
 {
     /// <summary>
     /// Fuck you Microsoft!
@@ -10,6 +6,8 @@ namespace FolderPorter
     /// </summary>
     public static class SystemIOAPI
     {
+        public static void CreateDirectory(DirectoryInfo directoryInfo, UnixFileMode unixFileMode) =>
+            CreateDirectory(directoryInfo.FullName, unixFileMode);
         public static void CreateDirectory(string directoryPath, UnixFileMode unixFileMode)
         {
             if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())

@@ -3,8 +3,8 @@
     [Serializable]
     public class VersionControlModel
     {
-        public int LastSuccessVersion { get; set; }
-        public int Version { get; set; }
+        public string LastSuccessVersion { get; set; }
+        public string Version { get; set; }
 
         public List<ValidVersionEntry> ValidVersionList { get; set; }
 
