@@ -57,6 +57,9 @@ namespace FolderPorter.Model
             if (appSettingModel.User.Length > 200)
                 appSettingModel.User = appSettingModel.User.Substring(0, 200);
 
+            if (appSettingModel.Password.Length > 500)
+                throw new Exception("Password.Length > 500");
+
             foreach (KeyValuePair<string, FolderModel> pair in appSettingModel.LocalFolders)
                 pair.Value.Folder = pair.Key;
             foreach (KeyValuePair<string, RemoteDeviceModel> pair in appSettingModel.RemoteDevice)

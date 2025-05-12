@@ -125,7 +125,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
 
 # 更新 AppSettings.json
 ## 需要设置的配置
-- Password 是当前驱动器上运行的应用程序的密码。长度限制: 1000
+- Password 是当前驱动器上运行的应用程序的密码。长度限制: 500
 - LocalFolders 列举所有绑定的文件夹，key 为文件夹名称
   - RootPath 为此文件夹的磁盘路径，Windows 和 Linux 均使用 /，否则可能执行报错
   - CanWrite 此文件夹是否接受远程设备的 Push(或本地Pull)

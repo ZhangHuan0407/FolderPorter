@@ -121,7 +121,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
 
 # update AppSettings.json
 ## Configuration that needs to be set
-- Password is the password for the applications running on the current drive. Limit: 1000
+- Password is the password for the applications running on the current drive. Limit: 500
 - LocalFolders lists all bound folders, with the key being the folder name.
   - RootPath is the disk path of this folder, using / for both Windows and Linux; otherwise, there may be execution errors.
   - CanWrite indicates whether this folder accepts Push from remote devices (or Pull locally).
@@ -134,6 +134,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - DevicePassword is the Password from the remote device's AppSettings.json.
 
 ## Default parameters, can be used without adjustment.
+- User When pushing data, the name of the pusher in the logs and records. If empty, use DNS.GetHostName()
 - MaxWorkerThreadCount: The upper limit of the calculation thread count for the thread pool
 - MaxIOThreadCount: The upper limit of the IO thread count for the thread pool
 - RemoteBuzyRetrySeconds: Delay this time before retrying when the remote device is busy
@@ -143,6 +144,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
 ```
 {
   "Password": "c7ce0d8e-4985-4464-9146-0767be889a45",
+  "User": "xxx@gmail.com",
   "LocalFolders": {
     "RegexGameWebGL": {
       "RootPath": "D:/RegexGame/Builds/WebGL Github/RegexGame",

@@ -11,9 +11,10 @@ namespace FolderPorter
 {
     internal static class Program
     {
-        internal const int VerifyBufferLength = 1024;
+        internal const int ProtocolBufferLength = 1024;
         internal const int SyncFilePreTurn = 8;
         internal const int SliceLength = 1024 * 1024;
+        internal const int TransferBufferLength = SliceLength + ProtocolBufferLength;
 
         internal const string VersionControlFile = ".VersionControl.json";
 
@@ -35,6 +36,7 @@ namespace FolderPorter
                                                                  UnixFileMode.OtherExecute;
 
         private static readonly object m_Lock = new object();
+        private static byte[]? m_TransferBuffer;
         private static Guid m_RunningTask;
 
         [STAThread]
@@ -69,6 +71,30 @@ namespace FolderPorter
                 PullMode();
             else if (argsModel.Type == WorkingMode.List)
                 ListMode();
+        }
+
+        private static byte[] RentTransferBuffer()
+        {
+            lock (m_Lock)
+            {
+                byte[] result;
+                if (m_TransferBuffer == null)
+                    result = new byte[TransferBufferLength];
+                else
+                {
+                    result = m_TransferBuffer;
+                    m_TransferBuffer = null;
+                }
+                return result;
+            }
+        }
+        private static void ReturnTransferBuffer(byte[] buffer)
+        {
+            lock (m_Lock)
+            {
+                if (m_TransferBuffer == null)
+                    m_TransferBuffer = buffer;
+            }
         }
 
         #region Server
@@ -136,7 +162,7 @@ namespace FolderPorter
         private static async Task VerifyLocalPasswordAsync(TcpClient tcpClient)
         {
             NetworkStream networkStream = tcpClient.GetStream();
-            byte[] bytes = new byte[VerifyBufferLength];
+            byte[] bytes = new byte[ProtocolBufferLength];
             int pointer = 0;
             await networkStream.ReadExactlyAsync(bytes, pointer, 4);
             int strLength = ByteEncoder.ReadInt(bytes, ref pointer);
@@ -152,7 +178,7 @@ namespace FolderPorter
 
         private static async Task<(OptionRequestModel, OptionResponseModel)> ReadOptionAsync(NetworkStream networkStream, Guid taskGuid)
         {
-            byte[] buffer = new byte[VerifyBufferLength];
+            byte[] buffer = new byte[ProtocolBufferLength];
             while (true)
             {
                 OptionRequestModel requestModel = await ReadModelAsync<OptionRequestModel>(networkStream, buffer);
@@ -196,7 +222,7 @@ namespace FolderPorter
             Stopwatch transferStopwatch = Stopwatch.StartNew();
 
             byte[] crc32Buffer = null;
-            byte[] buffer = new byte[SliceLength + 1024];
+            byte[] buffer = RentTransferBuffer();
             int pointer = 0;
 
             Dictionary<int, FileSliceHashModel> fileIndexToModel = new Dictionary<int, FileSliceHashModel>();
@@ -347,14 +373,14 @@ namespace FolderPorter
             Console.WriteLine($"Delete files count: {transferFinishResponseModel.DeleteFilesCount}");
         SkipTransferFinish:
 
-            ;
+            ReturnTransferBuffer(buffer);
         }
 
         private static async Task ListFolderAsync(TcpClient tcpClient, string folder)
         {
             await Task.CompletedTask;
             NetworkStream networkStream = tcpClient.GetStream();
-            byte[] buffer = new byte[SliceLength + 1024];
+            byte[] buffer = RentTransferBuffer();
 
             if (AppSettingModel.Instance.LocalFolders.TryGetValue(folder, out FolderModel folderModel) &&
                 folderModel.VersionControl)
@@ -372,6 +398,8 @@ namespace FolderPorter
                                       select validVertionEntry;
             ListFolderResponseModel responseModel = new ListFolderResponseModel(folder, validVersionEntries.Take(32), validVersionList.Count);
             WriteModel(tcpClient.GetStream(), buffer, responseModel);
+
+            ReturnTransferBuffer(buffer);
         }
         #endregion
 
@@ -423,7 +451,7 @@ namespace FolderPorter
             long transferTotalBytes = 0L;
             Stopwatch transferStopwatch = Stopwatch.StartNew();
 
-            byte[] buffer = new byte[SliceLength + 1024];
+            byte[] buffer = RentTransferBuffer();
             int pointer = 0;
             int turn = 0;
             while (calculateFileHashTask.Status == TaskStatus.WaitingForActivation ||
@@ -497,6 +525,10 @@ namespace FolderPorter
 
             if (cancellationToken.IsCancellationRequested)
                 return;
+
+            if (calculateFileHashTask.Exception != null)
+                throw calculateFileHashTask.Exception;
+
             // send finish flag, and waiting server send back finish flag
             PushFolderRequestModel transferFinishRequestModel = new PushFolderRequestModel(folderModel.Folder)
             {
@@ -515,8 +547,7 @@ namespace FolderPorter
             if (transferFinishResponseModel.DeleteInvalidVersion)
                 Console.WriteLine($"Remote delete invalid version. It may be because no version differences were detected.");
 
-            if (calculateFileHashTask.Exception != null)
-                throw calculateFileHashTask.Exception;
+            ReturnTransferBuffer(buffer);
         }
 
         private static Task CalculateFileSliceHashAsync(FolderModel folderModel, Queue<FileSliceHashModel> waitingSyncFileList,
@@ -596,7 +627,7 @@ namespace FolderPorter
                 throw new Exception($"Can not connect to {remoteDeviceModel.DeviceName}");
             using NetworkStream networkStream = tcpClient.GetStream();
             using CancellationTokenSource tokenSource = new CancellationTokenSource();
-            byte[] buffer = new byte[SliceLength + 1024];
+            byte[] buffer = RentTransferBuffer();
 
             Task task = Task.Run(async () =>
             {
@@ -626,12 +657,14 @@ namespace FolderPorter
 
             Task.WaitAll(task);
             tokenSource.Cancel();
+
+            ReturnTransferBuffer(buffer);
         }
         #endregion
 
         private static async Task VerifyRemotePasswordAsync(NetworkStream networkStream, string devicePassword)
         {
-            byte[] bytes = new byte[VerifyBufferLength];
+            byte[] bytes = new byte[ProtocolBufferLength];
             int pointer = 0;
             ByteEncoder.WriteString(bytes, devicePassword, ref pointer);
             await networkStream.WriteAsync(bytes, 0, pointer);
@@ -644,12 +677,12 @@ namespace FolderPorter
 
         private static async Task SendOptionAsync(NetworkStream networkStream, WorkingMode type, string folder)
         {
-            byte[] buffer = new byte[VerifyBufferLength];
+            byte[] buffer = new byte[ProtocolBufferLength];
             Version version = Assembly.GetExecutingAssembly().GetName().Version!;
             while (true)
             {
                 OptionRequestModel requestModel = new OptionRequestModel(type, folder, AppSettingModel.Instance.User);
-                WriteModel(networkStream, new byte[VerifyBufferLength], requestModel);
+                WriteModel(networkStream, buffer, requestModel);
                 OptionResponseModel responseModel = await ReadModelAsync<OptionResponseModel>(networkStream, buffer);
                 if (!responseModel.FindFolder)
                     throw new Exception($"Remote not find folder: {folder}");
