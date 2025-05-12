@@ -138,6 +138,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - DevicePassword 为远程设备 AppSettings.json 的 Password
 
 ## 默认参数，不调也能用
+- User 推送数据时，日志和记录中的推送者名称。如果为空，则使用DNS.GetHostName()
 - MaxWorkerThreadCount 线程池的运算线程数量上限
 - MaxIOThreadCount 线程池的IO线程数量上限
 - RemoteBuzyRetrySeconds 当远程设备处于繁忙状态，延迟此时间后重试
@@ -151,6 +152,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
 ```
 {
   "Password": "c7ce0d8e-4985-4464-9146-0767be889a45",
+  "User": "xxx@gmail.com",
   "LocalFolders": {
     "RegexGameWebGL": {
       "RootPath": "D:/RegexGame/Builds/WebGL Github/RegexGame",

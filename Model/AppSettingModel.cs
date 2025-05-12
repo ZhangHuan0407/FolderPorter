@@ -1,4 +1,5 @@
-﻿using System.Net.Sockets;
+﻿using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -13,6 +14,7 @@ namespace FolderPorter.Model
         internal static AppSettingModel Instance = new AppSettingModel();
 
         public string Password { get; set; }
+        public string User { get; set; }
 
         public Dictionary<string, FolderModel> LocalFolders { get; set; }
 
@@ -49,6 +51,11 @@ namespace FolderPorter.Model
                 IsTemplate = true;
             }
             AppSettingModel appSettingModel = JsonSerializer.Deserialize<AppSettingModel>(appSettingJson)!;
+
+            if (string.IsNullOrWhiteSpace(appSettingModel.User))
+                appSettingModel.User = Dns.GetHostName();
+            if (appSettingModel.User.Length > 200)
+                appSettingModel.User = appSettingModel.User.Substring(0, 200);
 
             foreach (KeyValuePair<string, FolderModel> pair in appSettingModel.LocalFolders)
                 pair.Value.Folder = pair.Key;

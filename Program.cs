@@ -15,9 +15,6 @@ namespace FolderPorter
         internal const int SyncFilePreTurn = 8;
         internal const int SliceLength = 1024 * 1024;
 
-        internal const string PullType = "pull";
-        internal const string PushType = "push";
-
         internal const string VersionControlFile = ".VersionControl.json";
 
         internal readonly static UnixFileMode DirectoryUnixFileMode = UnixFileMode.UserRead |
@@ -93,20 +90,25 @@ namespace FolderPorter
                                     AppSettingModel.Instance.SetTcpClientParameter(tcpClient);
                                     await VerifyLocalPasswordAsync(tcpClient);
                                     NetworkStream networkStream = tcpClient.GetStream();
-                                    // if user have changed AppSettings.json, it will hot reload
-                                    AppSettingModel.Reload();
 
-                                    OptionRequestModel requestModel = await ReadOptionAsync(networkStream, taskGuid);
-                                    Console.WriteLine($"Guid: {taskGuid}, Folder: {requestModel.Folder}, Type: {requestModel.Type}");
-                                    if (requestModel.Type == PullType)
+                                    (OptionRequestModel requestModel, OptionResponseModel responseModel) = await ReadOptionAsync(networkStream, taskGuid);
+                                    if (responseModel.Refause)
+                                        goto AfterWorkingAction;
+                                    WorkingMode requestType = requestModel.Type;
+                                    Console.WriteLine($"Guid: {taskGuid}, Folder: {requestModel.Folder}, Type: {requestType}");
+                                    if (requestType == WorkingMode.Push)
+                                        await AcceptPushFolderAsync(tcpClient, requestModel.Folder, requestModel.User);
+                                    else if (requestType == WorkingMode.Pull)
                                     {
                                         FolderModel folderModel = AppSettingModel.Instance.LocalFolders[requestModel.Folder];
                                         await PushFolderAsync(networkStream, folderModel, tokenSource.Token);
                                     }
-                                    else if (requestModel.Type == PushType)
-                                        await AcceptPushFolderAsync(tcpClient, requestModel.Folder);
+                                    else if (requestType == WorkingMode.List)
+                                        await ListFolderAsync(tcpClient, requestModel.Folder);
                                     else
-                                        throw new Exception($"Unknown type: {requestModel.Type}");
+                                        throw new Exception($"Unknown type: {requestType}");
+                                AfterWorkingAction:
+                                    ;
                                 }
                                 catch (Exception ex)
                                 {
@@ -148,7 +150,7 @@ namespace FolderPorter
             Console.WriteLine("VerifyLocalPassword success");
         }
 
-        private static async Task<OptionRequestModel> ReadOptionAsync(NetworkStream networkStream, Guid taskGuid)
+        private static async Task<(OptionRequestModel, OptionResponseModel)> ReadOptionAsync(NetworkStream networkStream, Guid taskGuid)
         {
             byte[] buffer = new byte[VerifyBufferLength];
             while (true)
@@ -158,12 +160,18 @@ namespace FolderPorter
                 responseModel.FindFolder = AppSettingModel.Instance.LocalFolders.TryGetValue(requestModel.Folder, out FolderModel folderModel);
                 if (folderModel != null)
                 {
-                    if (requestModel.Type == PullType &&
-                        !folderModel.CanRead)
-                        responseModel.Refause = true;
-                    else if (requestModel.Type == PushType &&
-                        !folderModel.CanWrite)
-                        responseModel.Refause = true;
+                    switch (requestModel.Type)
+                    {
+                        case WorkingMode.Push:
+                            responseModel.Refause |= !folderModel.CanWrite;
+                            break;
+                        case WorkingMode.Pull:
+                            responseModel.Refause |= !folderModel.CanRead;
+                            break;
+                        case WorkingMode.List:
+                            responseModel.Refause |= !folderModel.VersionControl;
+                            break;
+                    }
                 }
                 
                 lock (m_Lock)
@@ -176,11 +184,11 @@ namespace FolderPorter
                 }
                 WriteModel(networkStream, buffer, responseModel);
                 if (!responseModel.PleaseWaiting)
-                    return requestModel;
+                    return (requestModel, responseModel);
             }
         }
 
-        private static async Task AcceptPushFolderAsync(TcpClient tcpClient, string folder)
+        private static async Task AcceptPushFolderAsync(TcpClient tcpClient, string folder, string remoteUser)
         {
             await Task.CompletedTask;
             NetworkStream networkStream = tcpClient.GetStream();
@@ -196,7 +204,7 @@ namespace FolderPorter
             if (AppSettingModel.Instance.LocalFolders.TryGetValue(folder, out FolderModel folderModel))
             {
                 folderModel.LoadVersionControl();
-                folderModel.StartNewVersion(tcpClient.Client.RemoteEndPoint);
+                folderModel.StartNewVersion(remoteUser, tcpClient.Client.RemoteEndPoint);
             }
             else
             {
@@ -296,7 +304,7 @@ namespace FolderPorter
                 TransferFinish = true,
             };
             if (folderModel.VersionControl)
-                folderModel.SaveFinishVersion();
+                folderModel.SaveFinishVersion(remoteUser);
             else
             {
                 HashSet<string> fileRelativePathSet = new HashSet<string>();
@@ -317,6 +325,30 @@ namespace FolderPorter
         SkipTransferFinish:
 
             ;
+        }
+
+        private static async Task ListFolderAsync(TcpClient tcpClient, string folder)
+        {
+            await Task.CompletedTask;
+            NetworkStream networkStream = tcpClient.GetStream();
+            byte[] buffer = new byte[SliceLength + 1024];
+
+            if (AppSettingModel.Instance.LocalFolders.TryGetValue(folder, out FolderModel folderModel) &&
+                folderModel.VersionControl)
+            {
+                folderModel.LoadVersionControl();
+            }
+            else
+            {
+                tcpClient.Client.Disconnect(false);
+                return;
+            }
+            IReadOnlyList<ValidVersionEntry> validVersionList = folderModel.GetValidVersionList();
+            var validVersionEntries = from validVertionEntry in validVersionList
+                                      orderby validVertionEntry.DateTime descending
+                                      select validVertionEntry;
+            ListFolderResponseModel responseModel = new ListFolderResponseModel(folder, validVersionEntries.Take(32), validVersionList.Count);
+            WriteModel(tcpClient.GetStream(), buffer, responseModel);
         }
         #endregion
 
@@ -344,7 +376,7 @@ namespace FolderPorter
                 try
                 {
                     await VerifyRemotePasswordAsync(networkStream, remoteDeviceModel.DevicePassword);
-                    await SendOptionAsync(networkStream, PushType, folderModel.Folder);
+                    await SendOptionAsync(networkStream, WorkingMode.Push, folderModel.Folder);
                     await PushFolderAsync(networkStream, folderModel, tokenSource.Token);
                 }
                 catch (Exception ex)
@@ -512,8 +544,8 @@ namespace FolderPorter
                 try
                 {
                     await VerifyRemotePasswordAsync(networkStream, remoteDeviceModel.DevicePassword);
-                    await SendOptionAsync(networkStream, PullType, folderModel.Folder);
-                    await AcceptPushFolderAsync(tcpClient, folderModel.Folder);
+                    await SendOptionAsync(networkStream, WorkingMode.Pull, folderModel.Folder);
+                    await AcceptPushFolderAsync(tcpClient, folderModel.Folder, remoteDeviceModel.DeviceName);
                 }
                 catch (Exception ex)
                 {
@@ -530,6 +562,45 @@ namespace FolderPorter
         private static void ListMode()
         {
             Console.WriteLine(WorkingMode.List);
+            ArgumentModel argsModel = ArgumentModel.Instance;
+            if (!AppSettingModel.Instance.RemoteDevice.TryGetValue(argsModel.RemoteDrive, out RemoteDeviceModel? remoteDeviceModel))
+                throw new Exception($"Not found drive:{argsModel.RemoteDrive}");
+
+            using TcpClient tcpClient = remoteDeviceModel.TryConnect();
+            if (tcpClient == null)
+                throw new Exception($"Can not connect to {remoteDeviceModel.DeviceName}");
+            using NetworkStream networkStream = tcpClient.GetStream();
+            using CancellationTokenSource tokenSource = new CancellationTokenSource();
+            byte[] buffer = new byte[SliceLength + 1024];
+
+            Task task = Task.Run(async () =>
+            {
+                try
+                {
+                    await VerifyRemotePasswordAsync(networkStream, remoteDeviceModel.DevicePassword);
+                    await SendOptionAsync(networkStream, WorkingMode.List, argsModel.Folder);
+                    ListFolderResponseModel responseModel = await ReadModelAsync<ListFolderResponseModel>(networkStream, buffer);
+                    Console.WriteLine(responseModel.Folder);
+                    Console.WriteLine($"ValidVersionCount: {responseModel.ValidVersionCount}");
+                    Console.WriteLine();
+                    JsonSerializerOptions options = new JsonSerializerOptions()
+                    {
+                        WriteIndented = true,
+                    };
+                    for (int i = 0; i < responseModel.ValidVersionList.Count; i++)
+                    {
+                        ValidVersionEntry validVersionEntry = responseModel.ValidVersionList[i];
+                        Console.WriteLine(JsonSerializer.Serialize(validVersionEntry, options));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(ex);
+                }
+            });
+
+            Task.WaitAll(task);
+            tokenSource.Cancel();
         }
         #endregion
 
@@ -546,13 +617,13 @@ namespace FolderPorter
             Console.WriteLine("VerifyRemotePassword success");
         }
 
-        private static async Task SendOptionAsync(NetworkStream networkStream, string type, string folder)
+        private static async Task SendOptionAsync(NetworkStream networkStream, WorkingMode type, string folder)
         {
             byte[] buffer = new byte[VerifyBufferLength];
             Version version = Assembly.GetExecutingAssembly().GetName().Version!;
             while (true)
             {
-                OptionRequestModel requestModel = new OptionRequestModel(type, folder);
+                OptionRequestModel requestModel = new OptionRequestModel(type, folder, AppSettingModel.Instance.User);
                 WriteModel(networkStream, new byte[VerifyBufferLength], requestModel);
                 OptionResponseModel responseModel = await ReadModelAsync<OptionResponseModel>(networkStream, buffer);
                 if (!responseModel.FindFolder)

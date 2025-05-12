@@ -28,41 +28,17 @@ namespace FolderPorter.Model
                 else if (WorkingMode.Push.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
                 {
                     Instance.Type = WorkingMode.Push;
-                    Match match = Regex.Match(args[i], "@(?<RemoteDrive>[\\w_-]+):(?<Folder>[\\w_-]+)\\s?\\Z");
-                    if (match.Success)
-                    {
-                        Instance.RemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
-                        Instance.Folder = match.Groups["Folder"]?.Value ?? string.Empty;
-                    }
-                    if (string.IsNullOrEmpty(Instance.RemoteDrive) ||
-                        string.IsNullOrEmpty(Instance.Folder))
-                        throw new Exception("push argument error");
+                    TryParseArgumentStr(args[i]);
                 }
                 else if (WorkingMode.Pull.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
                 {
                     Instance.Type = WorkingMode.Pull;
-                    Match match = Regex.Match(args[i], "@(?<RemoteDrive>[\\w_-]+):(?<Folder>[\\w_-]+)\\s?\\Z");
-                    if (match.Success)
-                    {
-                        Instance.RemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
-                        Instance.Folder = match.Groups["Folder"]?.Value ?? string.Empty;
-                    }
-                    if (string.IsNullOrEmpty(Instance.RemoteDrive) ||
-                        string.IsNullOrEmpty(Instance.Folder))
-                        throw new Exception("pull argument error");
+                    TryParseArgumentStr(args[i]);
                 }
                 else if (WorkingMode.List.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
                 {
                     Instance.Type = WorkingMode.List;
-                    Match match = Regex.Match(args[i], "@(?<RemoteDrive>[\\w_-]+):(?<Folder>[\\w_-]+)\\s?\\Z");
-                    if (match.Success)
-                    {
-                        Instance.RemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
-                        Instance.Folder = match.Groups["Folder"]?.Value ?? string.Empty;
-                    }
-                    if (string.IsNullOrEmpty(Instance.RemoteDrive) ||
-                        string.IsNullOrEmpty(Instance.Folder))
-                        throw new Exception("list argument error");
+                    TryParseArgumentStr(args[i]);
                 }
                 else if (WorkingMode.Help.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
                 {
@@ -70,6 +46,19 @@ namespace FolderPorter.Model
                 }
             }
             Instance.Help |= args.Length == 0;
+
+            void TryParseArgumentStr(string argumentStr)
+            {
+                Match match = Regex.Match(argumentStr, "@(?<RemoteDrive>[\\w_-]+):(?<Folder>[\\w_-]+)\\s?\\Z");
+                if (match.Success)
+                {
+                    Instance.RemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
+                    Instance.Folder = match.Groups["Folder"]?.Value ?? string.Empty;
+                }
+                if (string.IsNullOrEmpty(Instance.RemoteDrive) ||
+                    string.IsNullOrEmpty(Instance.Folder))
+                    throw new Exception($"{Instance.Type} argument error");
+            }
         }
 
         public static void LogHelp()
@@ -94,7 +83,7 @@ namespace FolderPorter.Model
 
         public void EnterInteractiveMode()
         {
-            Console.WriteLine("push, pull or server?");
+            Console.WriteLine("push, pull, list or server?");
             while (true)
             {
                 string inputStr = Console.ReadLine()!.Trim().Trim('-');

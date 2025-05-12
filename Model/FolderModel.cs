@@ -167,25 +167,27 @@ namespace FolderPorter.Model
             }
         }
 
-        public void StartNewVersion(EndPoint? remoteEndPoint)
+        public void StartNewVersion(string remoteUser, EndPoint? remoteEndPoint)
         {
             if (VersionControl &&
                 m_VersionControlModel != null)
             {
                 m_VersionControlModel.Version++;
-                m_VersionControlModel.TransferLog.Add($"start {m_VersionControlModel.Version} {DateTime.Now} {remoteEndPoint}");
+                Console.WriteLine($"start {m_VersionControlModel.Version} {DateTime.Now} {remoteUser} {remoteEndPoint}");
                 SystemIOAPI.CreateDirectory($"{RootPath}/{m_VersionControlModel.Version}", Program.DirectoryUnixFileMode);
                 SaveVersionControl();
             }
         }
 
-        public void SaveFinishVersion()
+        public void SaveFinishVersion(string remoteUser)
         {
             if (VersionControl &&
                 m_VersionControlModel != null)
             {
+                Console.WriteLine($"finish {m_VersionControlModel.Version} {DateTime.Now}");
                 m_VersionControlModel.LastSuccessVersion = m_VersionControlModel.Version;
-                m_VersionControlModel.TransferLog.Add($"finish {m_VersionControlModel.Version} {DateTime.Now}");
+                ValidVersionEntry validVersionEntry = new ValidVersionEntry(m_VersionControlModel.Version, DateTime.Now, remoteUser);
+                m_VersionControlModel.ValidVersionList.Add(validVersionEntry);
                 SaveVersionControl();
             }
             m_Buffer = null;
@@ -203,5 +205,7 @@ namespace FolderPorter.Model
                 File.WriteAllText(VersionControlFilePath, versionControlStr);
             }
         }
+
+        public IReadOnlyList<ValidVersionEntry> GetValidVersionList() => m_VersionControlModel!.ValidVersionList;
     }
 }
