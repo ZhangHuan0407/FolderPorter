@@ -5,8 +5,29 @@
 - 运行环境 .net 8
 - 连接方式: TCP
 
+# 设计意图
+- 最开始我使用 scp -r 指令来同步文件夹，但是遇到了一些问题...
+- scp 是全量传输 + 一个一个数据包传输。最大 2 mb/s 的 wifi 环境下，scp居然出现了 < 100 kb/s 的百度云速度...
+- 同时，scp 是基于 ssh 实现的，如果两台设备都是 Windows，不装环境还真用不了
+- Windows 的远程桌面，复制一个文件能给远程桌面卡掉线 :(
+- 一怒之下做了文件切片校验和差量传输的软件
+
+- VersionControl 仅仅是意外之举，版本控制并不是本意
+- 由于我期望某个文件夹推送内容后归档，因此修改了文件夹存储结构，添加了版本控制
+
+- 由于只开发了4天时间，**这个软件源码并不复杂，功能并不强大**，版本控制请用 git 或者 svn
+- 这玩意的核心是:
+  1. 切片并批次传输，在高延迟不必传1数据包等1数据包 (一次传输8个文件，或累计超过 100mb)
+  2. 做了差量传输(1mb一个切片，求crc32并比较)，文件差异少时比 scp 传输更少文件
+  3. 浪费远程服务器的磁盘空间添加历史版本(可选)
+
+- 2 mb/s wifi 延迟 100ms+ 环境下，scp 传输 100 kb/s，FolderPorter 1.1 mb/s
+
 [TOC]
+- [设计意图](#设计意图)
 - [架构支持](#架构支持)
+  - [](#)
+- [版本控制软件差异](#版本控制软件差异)
 - [Windows 安装](#windows-安装)
   - [Windows 添加指令到 cmd](#windows-添加指令到-cmd)
 - [Linux 安装](#linux-安装)
@@ -20,6 +41,7 @@
   - [AppSettings.json 模板](#appsettingsjson-模板)
 - [Push 使用流程](#push-使用流程)
 - [Pull 使用流程](#pull-使用流程)
+- [List 使用流程](#list-使用流程)
 - [集群部署](#集群部署)
 - [多网段切换](#多网段切换)
 
@@ -31,6 +53,21 @@
 - ✅: 是
 - ❓: 理论上支持，但没有测试
 - ❌: 否
+
+##
+- 打包了无特定目标运行时的发行包，请注意此包内容未经测试
+- [No.specific.target.during.runtime.not.tested.zip](https://github.com/ZhangHuan0407/FolderPorter/releases/download/v0.1.6/No.specific.target.during.runtime.not.tested.zip)
+
+# 版本控制软件差异
+|                | git        | svn           | FolderPorter(远程开启 VersionControl，本地不开启) | scp      |
+| -------------- | ---------- | ------------- | ------------------------------------------------- | -------- |
+| 本地历史文件   | 存在       | 不存在        | 不存在                                            | 不存在   |
+| 控制系统       | 分布式版本 | 集中式        | 集中式                                            | 没有     |
+| 服务器历史文件 | 压缩       | ~~我不知道~~  | 不压缩，仅与最近的版本产生硬链接文件              | 没有     |
+| 分支           | 支持       | 支持          | 不支持                                            | 不支持   |
+| 大文件         | Git LFS    | svn:externals | 使用了切片的方式进行文件校验、传输，直接怼上去    | 怼上去   |
+| 压缩大仓库     | 困难       | 移除旧版本    | 移除旧版本                                        | 没有仓库 |
+| 传输加密       | 存在       | 存在          | 没有，但代码给你了你可以自己加                    | 存在     |
 
 # Windows 安装
 - 解压 [下载文件](https://github.com/ZhangHuan0407/FolderPorter/releases)
@@ -130,7 +167,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - RootPath 为此文件夹的磁盘路径，Windows 和 Linux 均使用 /，否则可能执行报错
   - CanWrite 此文件夹是否接受远程设备的 Push(或本地Pull)
   - CanRead 此文件夹是否接受远程设备的 Pull(或本地Push)
-  - VersionControl 文件夹是否启用版本控制。请在空文件夹状态下启用/关闭该配置。
+  - VersionControl 文件夹是否启用版本控制。**请在空文件夹状态下启用/关闭该配置。**
 - RemoteDevice 列举所有可访问的远程设备，key为远程设备名称
   - IP 为远程设备 server 模式监听的IP+端口。不配置不启用
   - IP2 当 IP 不可达时，自动尝试 IP2。不配置不启用
@@ -139,6 +176,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
 
 ## 默认参数，不调也能用
 - User 推送数据时，日志和记录中的推送者名称。如果为空，则使用DNS.GetHostName()
+- HardLinkInsteadOfCopy 当启用 VersionControl 时，如果与上一版本文件完全相同，则使用硬链接以节省存储空间
 - MaxWorkerThreadCount 线程池的运算线程数量上限
 - MaxIOThreadCount 线程池的IO线程数量上限
 - RemoteBuzyRetrySeconds 当远程设备处于繁忙状态，延迟此时间后重试
@@ -175,6 +213,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
       "DevicePassword": "d0d642fb-b77d-4e32-b77d-2444cd8788c3"
     }
   },
+
+  "HardLinkInsteadOfCopy": true,
 
   "MaxWorkerThreadCount": 2,
   "MaxIOThreadCount": 3,
@@ -252,6 +292,30 @@ FolderPorter pull@PC_1:TestFolder
 
 - 如果存在一般工件传递方向，比如打包机一般只产出不需要回读
 - 可以修改此打包机的配置, CanWrite: false, 让写入总是不成功
+
+# List 使用流程
+- 远程设备已配置 VersionControl 的情况下
+- 使用下列指令查看对方的历史版本
+```
+# 输入
+FolderPorter list@PC_1:TestFolder
+# 输出
+List
+VerifyRemotePassword success
+TestFolder
+ValidVersionCount: 2
+
+{
+  "Version": "7b60003232dd4a42aa869e883b7233cd",
+  "DateTime": "2025-05-12T21:48:25.8395206+08:00",
+  "RemoteUser": "PC_2"
+}
+{
+  "Version": "f12da32aaf8f4171934ce3869d0a2b40",
+  "DateTime": "2025-05-12T21:36:52.9075853+08:00",
+  "RemoteUser": "PC_2"
+}
+```
 
 # 集群部署
 ```mermaid

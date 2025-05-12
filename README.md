@@ -5,8 +5,24 @@
 - Runtime environment: .net 8
 - Connection method: TCP
 
+# Design Intent
+- Initially, I used the scp -r command to synchronize folders, but encountered some problems...
+- scp transfers everything in full; it transmits one data packet at a time. In a WiFi environment with a maximum speed of 2 mb/s, scp surprisingly had speeds below 100 kb/s, similar to Baidu Cloud...
+- At the same time, scp is based on ssh, and if both devices are Windows, it can't be used without proper setup.
+- Copying a file via Windows Remote Desktop often leads to disconnections :(
+- In frustration, I created software for file slicing, checksum validation, and differential transmission.
+- VersionControl was merely a byproduct; version control was not the main intention.
+- Since I expected to archive content after pushing it to a specific folder, I modified the folder storage structure and added version control.
+- Due to only having 4 days to develop this software, **the source code is not complex, and the functionality is not powerful**; please use git or svn for version control.
+- The core of this thing is:1. Slicing and batch transfer to avoid waiting for each data packet in high
+-latency scenarios (transfer 8 files at once, or accumulate over 100mb).2. Implemented differential transmission (1mb per slice, calculating crc32 and comparing); when there are few file differences, it transfers fewer files than scp.3. Optionally waste remote server disk space by adding historical versions.
+- In a 2 mb/s WiFi environment with 100 ms latency, scp transmits at 100 kb/s, while FolderPorter transmits at 1.1 mb/s.
+
 [TOC]
+- [Design Intent](#design-intent)
 - [Support](#support)
+  - [](#)
+- [版本控制软件差异](#版本控制软件差异)
 - [Windows Install](#windows-install)
   - [Windows Edit OS Path](#windows-edit-os-path)
 - [Linux Install](#linux-install)
@@ -20,6 +36,7 @@
   - [AppSettings.json Template](#appsettingsjson-template)
 - [How to Push](#how-to-push)
 - [How to Pull](#how-to-pull)
+- [How to List](#how-to-list)
 - [Cluster Deployment](#cluster-deployment)
 - [Multi-network Segment Switching](#multi-network-segment-switching)
 
@@ -31,6 +48,22 @@
 - ✅: yes
 - ❓: Theory supports it, but it has not been tested.
 - ❌: no
+
+##
+- A release package has been prepared without a specific target runtime.
+- Please note that the contents of this package have not been tested.
+- [No.specific.target.during.runtime.not.tested.zip](https://github.com/ZhangHuan0407/FolderPorter/releases/download/v0.1.6/No.specific.target.during.runtime.not.tested.zip)
+
+# 版本控制软件差异
+|                                | git         | svn                 | FolderPorter(server enable VersionControl，local disable it)                    | scp               |
+| ------------------------------ | ----------- | ------------------- | ------------------------------------------------------------------------------- | ----------------- |
+| Local History Files            | Exist       | Do not exist        | Do not exist                                                                    | Do not exist      |
+| Control System                 | Distributed | Centralized         | Centralized                                                                     | None              |
+| Server History Files           | Compressed  | ~~I don’t know~~    | Uncompressed, only generates hard link files with the latest version            | None              |
+| Branch                         | Supported   | Supported           | Not supported                                                                   | Not supported     |
+| Large Files                    | Git LFS     | svn:externals       | Used a slicing method for file verification and transmission, directly uploaded | Uploaded directly |
+| Compressing Large Repositories | Difficult   | Remove old versions | Remove old versions                                                             | No repository     |
+| Transmission Encryption        | Exists      | Exists              | No, but the code is provided so you can add it yourself                         | Exists            |
 
 # Windows Install
 - unzip [downloaded](https://github.com/ZhangHuan0407/FolderPorter/releases)
@@ -126,7 +159,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - RootPath is the disk path of this folder, using / for both Windows and Linux; otherwise, there may be execution errors.
   - CanWrite indicates whether this folder accepts Push from remote devices (or Pull locally).
   - CanRead indicates whether this folder accepts Pull from remote devices (or Push locally).
-  - VersionControl Whether the folder has version control enabled. Please enable/disable this configuration when the folder is empty.
+  - VersionControl Whether the folder has version control enabled. **Please enable/disable this configuration when the folder is empty.**
 - RemoteDevice lists all accessible remote devices, with the key being the remote device name.
   - IP is the IP + port that the remote device listens to in server mode.
   - IP2 When the IP is unreachable, automatically try IP2. Not configured, not enabled.
@@ -134,7 +167,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - DevicePassword is the Password from the remote device's AppSettings.json.
 
 ## Default parameters, can be used without adjustment.
-- User When pushing data, the name of the pusher in the logs and records. If empty, use DNS.GetHostName()
+- User: When pushing data, the name of the pusher in the logs and records. If empty, use DNS.GetHostName()
+- HardLinkInsteadOfCopy: When VersionControl is enabled, hard links are used to save storage space if the file is identical to the previous version.
 - MaxWorkerThreadCount: The upper limit of the calculation thread count for the thread pool
 - MaxIOThreadCount: The upper limit of the IO thread count for the thread pool
 - RemoteBuzyRetrySeconds: Delay this time before retrying when the remote device is busy
@@ -167,6 +201,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
       "DevicePassword": "d0d642fb-b77d-4e32-b77d-2444cd8788c3"
     }
   },
+
+  "HardLinkInsteadOfCopy": true,
 
   "MaxWorkerThreadCount": 2,
   "MaxIOThreadCount": 3,
@@ -243,6 +279,30 @@ FolderPorter pull@PC_1:TestFolder
 
 - If there is a general artifact transfer direction, such as a packaging machine that only produces and does not require read-back,
 - you can modify the configuration of this packaging machine, CanWrite: false, to ensure that writing is always unsuccessful.
+
+# How to List
+- When the remote device is configured with VersionControl
+- Use the following command to view the versions
+```
+# Input
+FolderPorter list@PC_1:TestFolder
+# Output
+List
+VerifyRemotePassword success
+TestFolder
+ValidVersionCount: 2
+
+{
+  "Version": "7b60003232dd4a42aa869e883b7233cd",
+  "DateTime": "2025-05-12T21:48:25.8395206+08:00",
+  "RemoteUser": "PC_2"
+}
+{
+  "Version": "f12da32aaf8f4171934ce3869d0a2b40",
+  "DateTime": "2025-05-12T21:36:52.9075853+08:00",
+  "RemoteUser": "PC_2"
+}
+```
 
 # Cluster Deployment
 ```mermaid
