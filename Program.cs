@@ -204,6 +204,8 @@ namespace FolderPorter
             if (AppSettingModel.Instance.LocalFolders.TryGetValue(folder, out FolderModel folderModel))
             {
                 folderModel.LoadVersionControl();
+                // It may remain an incomplete version due to a connection interruption.
+                folderModel.CheckAndRemoveInvalidVersion(folderModel.Version);
                 folderModel.StartNewVersion(remoteUser, tcpClient.Client.RemoteEndPoint);
             }
             else
@@ -299,17 +301,38 @@ namespace FolderPorter
 
             if (!requestModel.TransferFinish)
                 goto SkipTransferFinish;
+            HashSet<string> fileRelativePathSet = new HashSet<string>();
+            foreach (FileSliceHashModel fileSliceHashModel in fileIndexToModel.Values)
+                fileRelativePathSet.Add(fileSliceHashModel.FileRelativePath);
             PushFolderResponseModel transferFinishResponseModel = new PushFolderResponseModel()
             {
                 TransferFinish = true,
             };
             if (folderModel.VersionControl)
-                folderModel.SaveFinishVersion(remoteUser);
+            {
+                bool anyNewModifyOrDelete = transferTotalBytes != 0L ||
+                                            string.IsNullOrEmpty(folderModel.LastSuccessVersion);
+                if (anyNewModifyOrDelete)
+                    goto SkipDeleteCheck;
+                foreach ((string fileRelativePath, FileInfo fileInfo) in folderModel.EnumFiles(folderModel.LastSuccessVersion))
+                {
+                    // last version have fileRelativePath, but new version dont have
+                    if (!fileRelativePathSet.Contains(fileRelativePath))
+                    {
+                        anyNewModifyOrDelete = true;
+                        break;
+                    }
+                }
+            SkipDeleteCheck:
+                if (!anyNewModifyOrDelete)
+                {
+                    transferFinishResponseModel.DeleteInvalidVersion = true;
+                    folderModel.CheckAndRemoveInvalidVersion(folderModel.Version);
+                }
+                folderModel.SetVersionResult(remoteUser, anyNewModifyOrDelete);
+            }
             else
             {
-                HashSet<string> fileRelativePathSet = new HashSet<string>();
-                foreach (FileSliceHashModel fileSliceHashModel in fileIndexToModel.Values)
-                    fileRelativePathSet.Add(fileSliceHashModel.FileRelativePath);
                 transferFinishResponseModel.DeleteFilesCount = folderModel.CleanFifthWheelFiles(fileRelativePathSet);
                 folderModel.CleanEmptyDirectory();
             }
@@ -489,6 +512,8 @@ namespace FolderPorter
             Console.WriteLine("Waiting for remote ensure transfer finish...");
             PushFolderResponseModel transferFinishResponseModel = await ReadModelAsync<PushFolderResponseModel>(networkStream, buffer);
             Console.WriteLine($"Remote delete files count: {transferFinishResponseModel.DeleteFilesCount}");
+            if (transferFinishResponseModel.DeleteInvalidVersion)
+                Console.WriteLine($"Remote delete invalid version. It may be because no version differences were detected.");
 
             if (calculateFileHashTask.Exception != null)
                 throw calculateFileHashTask.Exception;

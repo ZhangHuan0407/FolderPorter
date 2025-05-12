@@ -5,9 +5,9 @@
     {
         public List<FileAnchor> NeedSyncList { get; set; }
 
-        public int DeleteFilesCount { get; set; }
-
         public bool TransferFinish { get; set; }
+        public int DeleteFilesCount { get; set; }
+        public bool DeleteInvalidVersion { get; set; }
 
         public PushFolderResponseModel()
         {
