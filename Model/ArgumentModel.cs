@@ -7,58 +7,69 @@ namespace FolderPorter.Model
     {
         public static ArgumentModel Instance { get; set; }
 
-        public bool Server { get; set; }
+        public WorkingMode Type { get; set; }
 
-        public string PushRemoteDrive { get; set; }
-        public string PushFolder { get; set; }
-
-        public string PullRemoteDrive { get; set; }
-        public string PullFolder { get; set; }
+        public string RemoteDrive { get; set; }
+        public string Folder { get; set; }
 
         public bool Help { get; set; }
-        public bool InteractiveMode { get; set; }
 
         public static void ParseArgs(string[] args)
         {
             Instance = new ArgumentModel();
+            Instance.Type = WorkingMode.Unknown;
             for (int i = 0; i < args.Length; i++)
             {
-                string toLower = args[i].ToLower().Trim('-');
-                if (toLower == Program.ServerType)
+                string inputStr = args[i].Trim().Trim('-');
+                if (WorkingMode.Server.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
                 {
-                    Instance.Server = true;
+                    Instance.Type = WorkingMode.Server;
                 }
-                else if (toLower.StartsWith(Program.PushType))
+                else if (WorkingMode.Push.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
                 {
+                    Instance.Type = WorkingMode.Push;
                     Match match = Regex.Match(args[i], "@(?<RemoteDrive>[\\w_-]+):(?<Folder>[\\w_-]+)\\s?\\Z");
                     if (match.Success)
                     {
-                        Instance.PushRemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
-                        Instance.PushFolder = match.Groups["Folder"]?.Value ?? string.Empty;
+                        Instance.RemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
+                        Instance.Folder = match.Groups["Folder"]?.Value ?? string.Empty;
                     }
-                    if (string.IsNullOrEmpty(Instance.PushRemoteDrive) ||
-                        string.IsNullOrEmpty(Instance.PushFolder))
+                    if (string.IsNullOrEmpty(Instance.RemoteDrive) ||
+                        string.IsNullOrEmpty(Instance.Folder))
                         throw new Exception("push argument error");
                 }
-                else if (toLower.StartsWith(Program.PullType))
+                else if (WorkingMode.Pull.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
                 {
+                    Instance.Type = WorkingMode.Pull;
                     Match match = Regex.Match(args[i], "@(?<RemoteDrive>[\\w_-]+):(?<Folder>[\\w_-]+)\\s?\\Z");
                     if (match.Success)
                     {
-                        Instance.PullRemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
-                        Instance.PullFolder = match.Groups["Folder"]?.Value ?? string.Empty;
+                        Instance.RemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
+                        Instance.Folder = match.Groups["Folder"]?.Value ?? string.Empty;
                     }
-                    if (string.IsNullOrEmpty(Instance.PullRemoteDrive) ||
-                        string.IsNullOrEmpty(Instance.PullFolder))
+                    if (string.IsNullOrEmpty(Instance.RemoteDrive) ||
+                        string.IsNullOrEmpty(Instance.Folder))
                         throw new Exception("pull argument error");
                 }
-                else if (toLower == "help")
+                else if (WorkingMode.List.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
+                {
+                    Instance.Type = WorkingMode.List;
+                    Match match = Regex.Match(args[i], "@(?<RemoteDrive>[\\w_-]+):(?<Folder>[\\w_-]+)\\s?\\Z");
+                    if (match.Success)
+                    {
+                        Instance.RemoteDrive = match.Groups["RemoteDrive"]?.Value ?? string.Empty;
+                        Instance.Folder = match.Groups["Folder"]?.Value ?? string.Empty;
+                    }
+                    if (string.IsNullOrEmpty(Instance.RemoteDrive) ||
+                        string.IsNullOrEmpty(Instance.Folder))
+                        throw new Exception("list argument error");
+                }
+                else if (WorkingMode.Help.ToString().Equals(inputStr, StringComparison.CurrentCultureIgnoreCase))
                 {
                     Instance.Help = true;
                 }
             }
             Instance.Help |= args.Length == 0;
-            Instance.InteractiveMode = args.Length == 0;
         }
 
         public static void LogHelp()
@@ -68,33 +79,33 @@ namespace FolderPorter.Model
                               app will listen for a long time and the port will not automatically exit.
 
     push@RemoteDrive:Folder   example: push@raspberry4:testfolder
-                              try to connect raspberry4 in appsetting.json[RemoteDevice] and
+                              Try to connect raspberry4 in appsetting.json[RemoteDevice] and
                               push all files in appsetting.json[LocalFolders][Folder] to remote folder.
 
     pull@RemoteDrive:Folder   example: pull@linux:folder2
-                              try to connect linux in appsetting.json[RemoteDevice] and
+                              Try to connect linux in appsetting.json[RemoteDevice] and
                               pull all files in appsetting.json[LocalFolders][Folder] from remote folder.
+
+    list@RemoteDrive:Folder   example: list@linux:folder3
+                              Try to connect linux in appsetting.json[RemoteDevice] and list all version
+                              in remote folder. If remote folder not set VersionControl, will log failed.
 ");
         }
 
         public void EnterInteractiveMode()
         {
             Console.WriteLine("push, pull or server?");
-            string type;
             while (true)
             {
-                type = Console.ReadLine()!.ToLower().Trim();
-                if (type != Program.PushType &&
-                    type != Program.PullType &&
-                    type != Program.ServerType)
+                string inputStr = Console.ReadLine()!.Trim().Trim('-');
+                if (!Enum.TryParse<WorkingMode>(inputStr, true, out WorkingMode inputWorkingMode) ||
+                    inputWorkingMode == WorkingMode.Unknown)
                     continue;
+                Type = inputWorkingMode;
                 break;
             }
-            if (type == Program.ServerType)
-            {
-                Server = true;
+            if (Type == WorkingMode.Server)
                 return;
-            }
 
             Console.WriteLine("select one of remote drive (input name or number):");
             List<string> remoteDeviceList = new List<string>();
@@ -103,19 +114,19 @@ namespace FolderPorter.Model
                 Console.WriteLine($"[{remoteDeviceList.Count.ToString().PadLeft(2)}] {remoteDevice}");
                 remoteDeviceList.Add(remoteDevice);
             }
-            string inputRemoteDevice;
+            RemoteDrive = string.Empty;
             while (true)
             {
                 string input = Console.ReadLine()!.Trim();
                 if (AppSettingModel.Instance.RemoteDevice.ContainsKey(input))
                 {
-                    inputRemoteDevice = input;
+                    RemoteDrive = input;
                     break;
                 }
                 if (int.TryParse(input, out int index) &&
                     index >= 0 && index < remoteDeviceList.Count)
                 {
-                    inputRemoteDevice = remoteDeviceList[index];
+                    RemoteDrive = remoteDeviceList[index];
                     break;
                 }
             }
@@ -127,36 +138,25 @@ namespace FolderPorter.Model
                 Console.WriteLine($"[{folderList.Count.ToString().PadLeft(2)}] {folder}");
                 folderList.Add(folder);
             }
-            string inputFolder;
+            Folder = string.Empty;
             while (true)
             {
                 string input = Console.ReadLine()!.Trim();
                 if (AppSettingModel.Instance.LocalFolders.ContainsKey(input))
                 {
-                    inputFolder = input;
+                    Folder = input;
                     break;
                 }
                 if (int.TryParse(input, out int index) &&
                     index >= 0 && index < folderList.Count)
                 {
-                    inputFolder = folderList[index];
+                    Folder = folderList[index];
                     break;
                 }
             }
 
-            if (type == Program.PushType)
-            {
-                PushRemoteDrive = inputRemoteDevice;
-                PushFolder = inputFolder;
-            }
-            else if (type == Program.PullType)
-            {
-                PullRemoteDrive = inputRemoteDevice;
-                PullFolder = inputFolder;
-            }
-
             Console.WriteLine("ensure command (y/n):");
-            Console.WriteLine($"{type}@{inputRemoteDevice}:{inputFolder}");
+            Console.WriteLine($"{Type}@{RemoteDrive}:{Folder}");
 
             while (true)
             {

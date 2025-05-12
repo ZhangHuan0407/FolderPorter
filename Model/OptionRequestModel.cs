@@ -5,6 +5,7 @@
     {
         public string Type { get; set; }
         public string Folder { get; set; }
+        public int? SpecificVersion { get; set; }
 
         public OptionRequestModel()
         {

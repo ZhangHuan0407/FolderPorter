@@ -15,7 +15,6 @@ namespace FolderPorter
         internal const int SyncFilePreTurn = 8;
         internal const int SliceLength = 1024 * 1024;
 
-        internal const string ServerType = "server";
         internal const string PullType = "pull";
         internal const string PushType = "push";
 
@@ -62,29 +61,23 @@ namespace FolderPorter
             ArgumentModel argsModel = ArgumentModel.Instance;
             if (argsModel.Help)
                 ArgumentModel.LogHelp();
-            if (argsModel.InteractiveMode)
+            if (argsModel.Type == WorkingMode.Unknown)
                 argsModel.EnterInteractiveMode();
 
-            // server listern port
-            if (argsModel.Server)
-            {
+            if (argsModel.Type == WorkingMode.Server)
                 ServerMode();
-            }
-            // push folder to server
-            else if (!string.IsNullOrEmpty(argsModel.PushRemoteDrive))
-            {
+            else if (argsModel.Type == WorkingMode.Push)
                 PushMode();
-            }
-            else if (!string.IsNullOrEmpty(argsModel.PullRemoteDrive))
-            {
+            else if (argsModel.Type == WorkingMode.Pull)
                 PullMode();
-            }
+            else if (argsModel.Type == WorkingMode.List)
+                ListMode();
         }
 
         #region Server
         private static TcpListener ServerMode()
         {
-            Console.WriteLine($"ServerMode, ListernPort: {AppSettingModel.Instance.ListernPort}");
+            Console.WriteLine($"{WorkingMode.Server}, ListernPort: {AppSettingModel.Instance.ListernPort}");
             using TcpListener tcpListener = TcpListener.Create(AppSettingModel.Instance.ListernPort);
             tcpListener.Start(4);
             while (true)
@@ -330,11 +323,11 @@ namespace FolderPorter
         #region Push
         private static void PushMode()
         {
-            Console.WriteLine($"PushMode");
+            Console.WriteLine(WorkingMode.Push);
             ArgumentModel argsModel = ArgumentModel.Instance;
-            if (!AppSettingModel.Instance.RemoteDevice.TryGetValue(argsModel.PushRemoteDrive, out RemoteDeviceModel? remoteDeviceModel) ||
-                !AppSettingModel.Instance.LocalFolders.TryGetValue(argsModel.PushFolder, out FolderModel? folderModel))
-                throw new Exception($"Not found drive:{argsModel.PushRemoteDrive} or not found folder: {argsModel.PushFolder}");
+            if (!AppSettingModel.Instance.RemoteDevice.TryGetValue(argsModel.RemoteDrive, out RemoteDeviceModel? remoteDeviceModel) ||
+                !AppSettingModel.Instance.LocalFolders.TryGetValue(argsModel.Folder, out FolderModel? folderModel))
+                throw new Exception($"Not found drive:{argsModel.RemoteDrive} or not found folder: {argsModel.Folder}");
             if (!folderModel.CanRead)
                 throw new Exception($"FolderModel.CanRead => {folderModel.CanRead}");
             if (!Directory.Exists(folderModel.RootPath))
@@ -500,11 +493,11 @@ namespace FolderPorter
         #region Pull
         private static void PullMode()
         {
-            Console.WriteLine($"PullMode");
+            Console.WriteLine(WorkingMode.Pull);
             ArgumentModel argsModel = ArgumentModel.Instance;
-            if (!AppSettingModel.Instance.RemoteDevice.TryGetValue(argsModel.PullRemoteDrive, out RemoteDeviceModel? remoteDeviceModel) ||
-                !AppSettingModel.Instance.LocalFolders.TryGetValue(argsModel.PullFolder, out FolderModel? folderModel))
-                throw new Exception($"Not found drive:{argsModel.PushRemoteDrive} or not found folder: {argsModel.PushFolder}");
+            if (!AppSettingModel.Instance.RemoteDevice.TryGetValue(argsModel.RemoteDrive, out RemoteDeviceModel? remoteDeviceModel) ||
+                !AppSettingModel.Instance.LocalFolders.TryGetValue(argsModel.Folder, out FolderModel? folderModel))
+                throw new Exception($"Not found drive:{argsModel.RemoteDrive} or not found folder: {argsModel.Folder}");
             if (!folderModel.CanWrite)
                 throw new Exception($"FolderModel.CanWrite => {folderModel.CanWrite}");
 
@@ -530,6 +523,13 @@ namespace FolderPorter
 
             Task.WaitAll(task);
             tokenSource.Cancel();
+        }
+        #endregion
+
+        #region List
+        private static void ListMode()
+        {
+            Console.WriteLine(WorkingMode.List);
         }
         #endregion
 
@@ -606,7 +606,7 @@ namespace FolderPorter
         private static string m_LastFileRelativePath;
         private static void LogTransferState(int i, int total, long transferTotalLength, Stopwatch stopwatch, string fileRelativePath)
         {
-            if (ArgumentModel.Instance.Server)
+            if (ArgumentModel.Instance.Type == WorkingMode.Server)
                 return;
             if (i > 0 &&
                 m_LastFileRelativePath == fileRelativePath)
