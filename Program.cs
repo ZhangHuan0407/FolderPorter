@@ -1,6 +1,7 @@
 ﻿using FolderPorter.Model;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -260,32 +261,80 @@ namespace FolderPorter
             {
                 FileSliceHashModel fileSliceHashModel = requestModel.FileSliceHashList[i];
                 fileIndexToModel[fileSliceHashModel.FileIndex] = fileSliceHashModel;
-                if (folderModel.VersionControl)
-                    folderModel.CopyFileFromOldVersion(fileSliceHashModel.FileRelativePath, fileSliceHashModel.FileTotalLength);
-                FileInfo fileInfo = folderModel.ConvertToCurrentFileInfo(fileSliceHashModel.FileRelativePath);
                 FileSliceHashModel localModel;
-                if (!fileInfo.Exists)
-                    localModel = null;
+                FileInfo currentFileInfo = folderModel.ConvertToCurrentFileInfo(fileSliceHashModel.FileRelativePath);
+                if (folderModel.VersionControl)
+                {
+                    FileInfo lastVersionFileInfo = folderModel.ConvertToLastSuccessFileInfo(fileSliceHashModel.FileRelativePath);
+                    int notEqualTimes = 0;
+                    if (!lastVersionFileInfo.Exists)
+                        localModel = null;
+                    else
+                    {
+                        localModel = new FileSliceHashModel(fileSliceHashModel.FileIndex,
+                                                            fileSliceHashModel.FileRelativePath,
+                                                            lastVersionFileInfo,
+                                                            ref crc32Buffer);
+                    }
+                    if (fileSliceHashModel.FileTotalLength == 0L)
+                    {
+                        // mark this version is valid version
+                        if (fileSliceHashModel.FileTotalLength != lastVersionFileInfo.Length)
+                            transferTotalBytes++;
+                        SystemIOAPI.CreateDirectory(currentFileInfo.DirectoryName!, DirectoryUnixFileMode);
+                        currentFileInfo.Create().Dispose();
+                        SystemIOAPI.SetFileMode(currentFileInfo, FileUnixFileMode);
+                        continue;
+                    }
+                    for (int sliceIndex = 0; sliceIndex < fileSliceHashModel.CRCList.Count; sliceIndex++)
+                    {
+                        if (localModel != null &&
+                            localModel.CRCList.Count > sliceIndex &&
+                            localModel.CRCList[sliceIndex] == fileSliceHashModel.CRCList[sliceIndex])
+                            continue;
+                        notEqualTimes++;
+                        responseModel.NeedSyncList.Add(new FileAnchor(fileSliceHashModel.FileIndex, sliceIndex));
+                    }
+                    // last version is equal current version
+                    if (notEqualTimes == 0 &&
+                        fileSliceHashModel.FileTotalLength == lastVersionFileInfo.Length)
+                        SystemIOAPI.CopyFileOrHardLink(lastVersionFileInfo, currentFileInfo);
+                    else if (lastVersionFileInfo.Exists)
+                        folderModel.CopyFileFromOldVersion(fileSliceHashModel.FileRelativePath, fileSliceHashModel.FileTotalLength);
+                }
                 else
                 {
-                    localModel = new FileSliceHashModel(fileSliceHashModel.FileIndex,
-                                                        fileSliceHashModel.FileRelativePath,
-                                                        fileInfo,
-                                                        ref crc32Buffer);
-                    if (localModel.FileTotalLength != fileSliceHashModel.FileTotalLength)
+                    if (!currentFileInfo.Exists)
+                        localModel = null;
+                    else
                     {
-                        using (FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Write))
-                            fileStream.SetLength(fileSliceHashModel.FileTotalLength);
+                        localModel = new FileSliceHashModel(fileSliceHashModel.FileIndex,
+                                                            fileSliceHashModel.FileRelativePath,
+                                                            currentFileInfo,
+                                                            ref crc32Buffer);
+                        if (localModel.FileTotalLength != fileSliceHashModel.FileTotalLength)
+                        {
+                            using (FileStream fileStream = new FileStream(currentFileInfo.FullName, FileMode.Open, FileAccess.Write))
+                                fileStream.SetLength(fileSliceHashModel.FileTotalLength);
+                        }
                     }
-                }
-
-                for (int sliceIndex = 0; sliceIndex < fileSliceHashModel.CRCList.Count; sliceIndex++)
-                {
-                    if (localModel != null &&
-                        localModel.CRCList.Count > sliceIndex &&
-                        localModel.CRCList[sliceIndex] == fileSliceHashModel.CRCList[sliceIndex])
+                    if (fileSliceHashModel.FileTotalLength == 0L)
+                    {
+                        // mark this version is valid version
+                        transferTotalBytes++;
+                        SystemIOAPI.CreateDirectory(currentFileInfo.DirectoryName!, DirectoryUnixFileMode);
+                        currentFileInfo.Create().Dispose();
+                        SystemIOAPI.SetFileMode(currentFileInfo, FileUnixFileMode);
                         continue;
-                    responseModel.NeedSyncList.Add(new FileAnchor(fileSliceHashModel.FileIndex, sliceIndex));
+                    }
+                    for (int sliceIndex = 0; sliceIndex < fileSliceHashModel.CRCList.Count; sliceIndex++)
+                    {
+                        if (localModel != null &&
+                            localModel.CRCList.Count > sliceIndex &&
+                            localModel.CRCList[sliceIndex] == fileSliceHashModel.CRCList[sliceIndex])
+                            continue;
+                        responseModel.NeedSyncList.Add(new FileAnchor(fileSliceHashModel.FileIndex, sliceIndex));
+                    }
                 }
             }
             WriteModel(networkStream, buffer, responseModel);

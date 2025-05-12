@@ -213,7 +213,7 @@ namespace FolderPorter.Model
             {
                 m_VersionControlModel.LastSuccessVersion = m_VersionControlModel.Version;
                 ValidVersionEntry validVersionEntry = new ValidVersionEntry(m_VersionControlModel.Version, DateTime.Now, remoteUser);
-                m_VersionControlModel.ValidVersionList.Add(validVersionEntry);
+                m_VersionControlModel.ValidVersionList.Insert(0, validVersionEntry);
             }
             else
                 m_VersionControlModel.Version = m_VersionControlModel.LastSuccessVersion;

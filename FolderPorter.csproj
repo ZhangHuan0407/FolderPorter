@@ -13,6 +13,10 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/ZhangHuan0407/FolderPorter</RepositoryUrl>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Mono.Posix.NETStandard" Version="1.0.0" />
+  </ItemGroup>
   <ItemGroup>
     <None Update="AppSettingsTemplate.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>

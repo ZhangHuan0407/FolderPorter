@@ -20,6 +20,8 @@ namespace FolderPorter.Model
 
         public Dictionary<string, RemoteDeviceModel> RemoteDevice { get; set; }
 
+        public bool HardLinkInsteadOfCopy { get; set; }
+
         public int MaxWorkerThreadCount { get; set; }
         public int MaxIOThreadCount { get; set; }
 
