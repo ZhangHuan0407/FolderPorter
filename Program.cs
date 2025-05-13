@@ -18,6 +18,7 @@ namespace FolderPorter
         internal const int TransferBufferLength = SliceLength + ProtocolBufferLength;
 
         internal const string VersionControlFile = ".VersionControl.json";
+        internal const string HeadDirectory = "Head";
 
         internal readonly static UnixFileMode DirectoryUnixFileMode = UnixFileMode.UserRead |
                                                                       UnixFileMode.UserWrite |
@@ -101,6 +102,10 @@ namespace FolderPorter
         #region Server
         private static TcpListener ServerMode()
         {
+            if (Environment.OSVersion.Platform == PlatformID.Win32NT &&
+                !SystemPermission.IsWindowsAdministrator())
+                Console.WriteLine("Current user is not administrator, can't create directory link.");
+
             Console.WriteLine($"{WorkingMode.Server}, ListernPort: {AppSettingModel.Instance.ListernPort}");
             using TcpListener tcpListener = TcpListener.Create(AppSettingModel.Instance.ListernPort);
             tcpListener.Start(4);
@@ -279,10 +284,13 @@ namespace FolderPorter
                     if (fileSliceHashModel.FileTotalLength == 0L)
                     {
                         // mark this version is valid version
-                        if (fileSliceHashModel.FileTotalLength != lastVersionFileInfo.Length)
+                        if (!lastVersionFileInfo.Exists ||
+                            fileSliceHashModel.FileTotalLength != lastVersionFileInfo.Length)
                             transferTotalBytes++;
                         SystemIOAPI.CreateDirectory(currentFileInfo.DirectoryName!, DirectoryUnixFileMode);
-                        currentFileInfo.Create().Dispose();
+                        using (FileStream fileStream = new FileStream(currentFileInfo.FullName, FileMode.Create, FileAccess.Write))
+                        {
+                        }
                         SystemIOAPI.SetFileMode(currentFileInfo, FileUnixFileMode);
                         continue;
                     }
@@ -323,7 +331,9 @@ namespace FolderPorter
                         // mark this version is valid version
                         transferTotalBytes++;
                         SystemIOAPI.CreateDirectory(currentFileInfo.DirectoryName!, DirectoryUnixFileMode);
-                        currentFileInfo.Create().Dispose();
+                        using (FileStream fileStream = new FileStream(currentFileInfo.FullName, FileMode.Create, FileAccess.Write))
+                        {
+                        }
                         SystemIOAPI.SetFileMode(currentFileInfo, FileUnixFileMode);
                         continue;
                     }
@@ -358,7 +368,9 @@ namespace FolderPorter
                 if (!fileInfo.Exists)
                 {
                     SystemIOAPI.CreateDirectory(fileInfo.DirectoryName!, DirectoryUnixFileMode);
-                    fileInfo.Create().Dispose();
+                    using (FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Create, FileAccess.Write))
+                    {
+                    }
                     SystemIOAPI.SetFileMode(fileInfo, FileUnixFileMode);
                 }
                 using (FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite))
@@ -405,6 +417,12 @@ namespace FolderPorter
                     folderModel.CheckAndRemoveInvalidVersion(folderModel.Version);
                 }
                 folderModel.SetVersionResult(remoteUser, anyNewModifyOrDelete);
+                if (anyNewModifyOrDelete)
+                {
+                    string directoryPath = folderModel.ConvertToDirectoryPath(folderModel.Version!);
+                    string headDirectoryPath = folderModel.ConvertToHeadDirectoryPath();
+                    SystemIOAPI.LetHeadLinkToDirectory(headDirectoryPath, directoryPath);
+                }
             }
             else
             {

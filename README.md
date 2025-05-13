@@ -39,6 +39,7 @@
 - [How to List](#how-to-list)
 - [Cluster Deployment](#cluster-deployment)
 - [Multi-network Segment Switching](#multi-network-segment-switching)
+- [Version Control File Tree](#version-control-file-tree)
 
 # Support
 |                                                                   | Windows x86 | Windows x86-64 | Windows arm64 | Linux arm64 | Linux x86-64 | MacOS x86-64 | MacOS M1 |
@@ -322,3 +323,15 @@ PC_4[Computer C]--pull-->PC_1
 - The wireless connection can be configured in RemoteDevice.PC_1.IP2.
 - Every time you pull/push, it will prioritize using IP.
 - If IP is unreachable (wired transmission is disconnected), then it will try IP2.
+
+# Version Control File Tree
+```
+# A json file that records historical versions
+- .VersionControl.json
+# A folder for a specific version, folder name is the first 8 digits of the version number
+- abcd1234
+# A folder for a specific version, folder name is the first 8 digits of the version number
+- 1234abcd
+# The folder links to the last successfully generated version. On Windows, administrator rights are required to create folder links
+- Head
+```

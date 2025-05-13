@@ -54,6 +54,8 @@ namespace FolderPorter.Model
             return directoryPath;
         }
 
+        public string ConvertToHeadDirectoryPath() => $"{RootPath}/{Program.HeadDirectory}";
+
         public void CopyFileFromOldVersion(string fileRelativePath, long trimFileLength)
         {
             if (!VersionControl || m_VersionControlModel == null)

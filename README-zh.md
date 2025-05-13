@@ -44,6 +44,7 @@
 - [List 使用流程](#list-使用流程)
 - [集群部署](#集群部署)
 - [多网段切换](#多网段切换)
+- [版本控制文件夹结构](#版本控制文件夹结构)
 
 # 架构支持
 |                                                                   | Windows x86 | Windows x86-64 | Windows arm64 | Linux arm64 | Linux x86-64 | MacOS x86-64 | MacOS M1 |
@@ -336,3 +337,15 @@ PC_4[Computer C]--pull-->PC_1
 - 将无线配置在 RemoteDevice.PC_1.IP2
 - 每次 pull/push 时优先尝试使用 IP
 - 如果 IP 不可达(有线传输断开) 则尝试 IP2
+
+# 版本控制文件夹结构
+```
+# 一个json文件，记录历史版本
+- .VersionControl.json
+# 一个版本所在的文件夹，文件夹名为版本号前8位
+- abcd1234
+# 一个版本所在的文件夹，文件夹名为版本号前8位
+- 1234abcd
+# 文件夹链接到最后一个成功生成版本。Windows 下需要 administrator 才能生成文件夹链接
+- Head
+```
