@@ -16,6 +16,17 @@ namespace FolderPorter.Model
         public string Password { get; set; }
         public string User { get; set; }
 
+        public string AcceptEncryptedTransmission { get; set; }
+        public EncryptedTransmission AcceptEncryptedTransmissionType
+        {
+            get
+            {
+                if (!Enum.TryParse(AcceptEncryptedTransmission, out EncryptedTransmission result))
+                    result = EncryptedTransmission.SimplePassword;
+                return result;
+            }
+        }
+
         public Dictionary<string, FolderModel> LocalFolders { get; set; }
 
         public Dictionary<string, RemoteDeviceModel> RemoteDevice { get; set; }

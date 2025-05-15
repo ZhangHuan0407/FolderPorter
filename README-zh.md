@@ -45,6 +45,7 @@
 - [集群部署](#集群部署)
 - [多网段切换](#多网段切换)
 - [版本控制文件夹结构](#版本控制文件夹结构)
+- [启用加密传输](#启用加密传输)
 
 # 架构支持
 |                                                                   | Windows x86 | Windows x86-64 | Windows arm64 | Linux arm64 | Linux x86-64 | MacOS x86-64 | MacOS M1 |
@@ -68,7 +69,7 @@
 | 分支           | 支持       | 支持          | 不支持                                            | 不支持   |
 | 大文件         | Git LFS    | svn:externals | 使用了切片的方式进行文件校验、传输，直接怼上去    | 怼上去   |
 | 压缩大仓库     | 困难       | 移除旧版本    | 移除旧版本                                        | 没有仓库 |
-| 传输加密       | 存在       | 存在          | 没有，但代码给你了你可以自己加                    | 存在     |
+| 传输加密       | 存在       | 存在          | 明文密码+明文传输，或 Aes 低强度加密              | 存在     |
 
 # Windows 安装
 - 解压 [下载文件](https://github.com/ZhangHuan0407/FolderPorter/releases)
@@ -174,9 +175,14 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - IP2 当 IP 不可达时，自动尝试 IP2。不配置不启用
   - DomainPort 当 IP 与 IP2 均不可达时，自动尝试 DomainPort。不配置不启用
   - DevicePassword 为远程设备 AppSettings.json 的 Password
+  - EncryptedTransmission 需要与远程设备的 AcceptEncryptedTransmission 保持一致
 
 ## 默认参数，不调也能用
 - User 推送数据时，日志和记录中的推送者名称。如果为空，则使用DNS.GetHostName()
+- AcceptEncryptedTransmission: "SimplePassword" or "AES_CBC".
+  - string.Empty 视作 "SimplePassword", 仅在连接开始时明文传输密码并比对
+  - "SimplePassword" 在传输数据时没有任何加密
+  - "AES_CBC" 在连接开始时传输基于时间加盐的 MD5，并在传输数据时启用加密算法
 - HardLinkInsteadOfCopy 当启用 VersionControl 时，如果与上一版本文件完全相同，则使用硬链接以节省存储空间
 - MaxWorkerThreadCount 线程池的运算线程数量上限
 - MaxIOThreadCount 线程池的IO线程数量上限
@@ -192,6 +198,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
 {
   "Password": "c7ce0d8e-4985-4464-9146-0767be889a45",
   "User": "xxx@gmail.com",
+  "AcceptEncryptedTransmission": "",
   "LocalFolders": {
     "RegexGameWebGL": {
       "RootPath": "D:/RegexGame/Builds/WebGL Github/RegexGame",
@@ -211,7 +218,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
       "IP": "192.168.1.3:17979",
       "IP2": "192.168.2.3:17979",
       "DomainPort": "yyy.com:17979",
-      "DevicePassword": "d0d642fb-b77d-4e32-b77d-2444cd8788c3"
+      "DevicePassword": "d0d642fb-b77d-4e32-b77d-2444cd8788c3",
+      "EncryptedTransmission": ""
     }
   },
 
@@ -348,4 +356,35 @@ PC_4[Computer C]--pull-->PC_1
 - 1234abcd
 # 文件夹链接到最后一个成功生成版本。Windows 下需要 administrator 才能生成文件夹链接
 - Head
+```
+
+# 启用加密传输
+- 查看是否支持硬件级 aes，如果支持的话加密解密会很快
+```
+# windows 下可用使用 git bash 查看
+grep -m1 -o aes /proc/cpuinfo
+
+
+# 测试 AES-128-CBC 性能
+openssl speed -evp aes-128-cbc
+
+# Raspberry 4b 大约 40 m/s
+# type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+# AES-128-CBC(k/s) 36865.97k    40292.69k    41630.31k    41780.91k    41882.97k    42023.04k
+```
+
+- 使用 AES-CBC 对称式加密
+
+```
+# server AppSettings.json
+"AcceptEncryptedTransmission": "AES_CBC"
+
+# another drive AppSettings.json
+"RemoteDevice": {
+    "PC_1": {
+        "IP": "192.168.1.1:17979",
+        "DevicePassword": "123",
+        "EncryptedTransmission": "AES_CBC"
+    }
+},
 ```

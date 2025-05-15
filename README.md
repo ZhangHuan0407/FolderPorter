@@ -64,7 +64,7 @@
 | Branch                         | Supported   | Supported           | Not supported                                                                   | Not supported     |
 | Large Files                    | Git LFS     | svn:externals       | Used a slicing method for file verification and transmission, directly uploaded | Uploaded directly |
 | Compressing Large Repositories | Difficult   | Remove old versions | Remove old versions                                                             | No repository     |
-| Transmission Encryption        | Exists      | Exists              | No, but the code is provided so you can add it yourself                         | Exists            |
+| Transmission Encryption        | Exists      | Exists              | Plain text password, plain text transmission, or AES low strength encryption    | Exists            |
 
 # Windows Install
 - unzip [downloaded](https://github.com/ZhangHuan0407/FolderPorter/releases)
@@ -166,9 +166,14 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - IP2 When the IP is unreachable, automatically try IP2. Not configured, not enabled.
   - DomainPort When both IP and IP2 are unreachable, automatically try DomainPort. Not configured, not enabled.
   - DevicePassword is the Password from the remote device's AppSettings.json.
+  - EncryptedTransmission The encryption configuration needs to be consistent with the target's AcceptEncryptedTransmission.
 
 ## Default parameters, can be used without adjustment.
 - User: When pushing data, the name of the pusher in the logs and records. If empty, use DNS.GetHostName()
+- AcceptEncryptedTransmission: "SimplePassword" or "AES_CBC".
+  - string.Empty is same as "SimplePassword", just sample clear text password transmission.
+  - "SimplePassword" No encryption is applied during the transmission process.
+  - "AES_CBC" Transmit time-salted MD5 at the beginning of the connection and enable encryption algorithms during data transmission.
 - HardLinkInsteadOfCopy: When VersionControl is enabled, hard links are used to save storage space if the file is identical to the previous version.
 - MaxWorkerThreadCount: The upper limit of the calculation thread count for the thread pool
 - MaxIOThreadCount: The upper limit of the IO thread count for the thread pool
@@ -180,6 +185,7 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
 {
   "Password": "c7ce0d8e-4985-4464-9146-0767be889a45",
   "User": "xxx@gmail.com",
+  "AcceptEncryptedTransmission": "",
   "LocalFolders": {
     "RegexGameWebGL": {
       "RootPath": "D:/RegexGame/Builds/WebGL Github/RegexGame",
@@ -199,7 +205,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
       "IP": "192.168.1.3:17979",
       "IP2": "192.168.2.3:17979",
       "DomainPort": "yyy.com:17979",
-      "DevicePassword": "d0d642fb-b77d-4e32-b77d-2444cd8788c3"
+      "DevicePassword": "d0d642fb-b77d-4e32-b77d-2444cd8788c3",
+      "EncryptedTransmission": ""
     }
   },
 

@@ -10,7 +10,18 @@ namespace FolderPorter.Model
         public string IP { get; set; }
         public string IP2 { get; set; }
         public string DomainPort { get; set; }
+
         public string DevicePassword { get; set; }
+        public string EncryptedTransmission { get; set; }
+        public EncryptedTransmission EncryptedTransmissionType
+        {
+            get
+            {
+                if (!Enum.TryParse(EncryptedTransmission, out EncryptedTransmission result))
+                    result = FolderPorter.EncryptedTransmission.SimplePassword;
+                return result;
+            }
+        }
 
         [JsonIgnore]
         public string DeviceName { get; set; }
@@ -52,7 +63,7 @@ namespace FolderPorter.Model
         SkipOtherIP:
             if (AppSettingModel.Instance.LogDebug &&
                 tcpClient != null)
-                Console.WriteLine($"Try connect {tcpClient.Client.RemoteEndPoint}, Connected: {tcpClient.Connected}.");
+                Console.WriteLine($"Try connect {tcpClient.Client?.RemoteEndPoint}, Connected: {tcpClient.Connected}.");
             return tcpClient;
         }
 

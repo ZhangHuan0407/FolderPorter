@@ -1,7 +1,6 @@
 ﻿using FolderPorter.Model;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -38,7 +37,7 @@ namespace FolderPorter
                                                                  UnixFileMode.OtherExecute;
 
         private static readonly object m_Lock = new object();
-        private static byte[]? m_TransferBuffer;
+        private static readonly Stack<byte[]> m_TransferBufferStack = new Stack<byte[]>();
         private static Guid m_RunningTask;
 
         [STAThread]
@@ -80,22 +79,21 @@ namespace FolderPorter
             lock (m_Lock)
             {
                 byte[] result;
-                if (m_TransferBuffer == null)
+                if (m_TransferBufferStack.Count == 0)
                     result = new byte[TransferBufferLength];
                 else
-                {
-                    result = m_TransferBuffer;
-                    m_TransferBuffer = null;
-                }
+                    result = m_TransferBufferStack.Pop();
                 return result;
             }
         }
         private static void ReturnTransferBuffer(byte[] buffer)
         {
+            if (buffer.Length != TransferBufferLength)
+                return;
             lock (m_Lock)
             {
-                if (m_TransferBuffer == null)
-                    m_TransferBuffer = buffer;
+                if (m_TransferBufferStack.Count < 4)
+                    m_TransferBufferStack.Push(buffer);
             }
         }
 
@@ -113,30 +111,30 @@ namespace FolderPorter
             {
                 TcpClient tcpClient = tcpListener.AcceptTcpClient();
                 CancellationTokenSource tokenSource = new CancellationTokenSource();
-                Guid taskGuid = Guid.NewGuid();
-                Console.WriteLine($"Guid: {taskGuid}, IP: {tcpClient.Client.RemoteEndPoint}");
+                ConnectWrapper connectWrapper = new ConnectWrapper(tcpClient, Guid.NewGuid());
+                Console.WriteLine($"Guid: {connectWrapper.TaskGuid}, IP: {tcpClient.Client.RemoteEndPoint}");
                 _ = Task.Run(async () =>
                             {
                                 try
                                 {
-                                    AppSettingModel.Instance.SetTcpClientParameter(tcpClient);
-                                    await VerifyLocalPasswordAsync(tcpClient);
+                                    AppSettingModel.Instance.SetTcpClientParameter(connectWrapper.TcpClient);
+                                    await VerifyLocalPasswordAsync(connectWrapper);
                                     NetworkStream networkStream = tcpClient.GetStream();
 
-                                    (OptionRequestModel requestModel, OptionResponseModel responseModel) = await ReadOptionAsync(networkStream, taskGuid);
+                                    (OptionRequestModel requestModel, OptionResponseModel responseModel) = await ReadOptionAsync(connectWrapper);
                                     if (responseModel.Refause)
                                         goto AfterWorkingAction;
                                     WorkingMode requestType = requestModel.Type;
-                                    Console.WriteLine($"Guid: {taskGuid}, Folder: {requestModel.Folder}, Type: {requestType}");
+                                    Console.WriteLine($"Guid: {connectWrapper.TaskGuid}, Folder: {requestModel.Folder}, Type: {requestType}");
                                     if (requestType == WorkingMode.Push)
-                                        await AcceptPushFolderAsync(tcpClient, requestModel.Folder, requestModel.User);
+                                        await AcceptPushFolderAsync(connectWrapper, requestModel.Folder, requestModel.User);
                                     else if (requestType == WorkingMode.Pull)
                                     {
                                         FolderModel folderModel = AppSettingModel.Instance.LocalFolders[requestModel.Folder];
-                                        await PushFolderAsync(networkStream, folderModel, tokenSource.Token);
+                                        await PushFolderAsync(connectWrapper, folderModel, tokenSource.Token);
                                     }
                                     else if (requestType == WorkingMode.List)
-                                        await ListFolderAsync(tcpClient, requestModel.Folder);
+                                        await ListFolderAsync(connectWrapper, requestModel.Folder);
                                     else
                                         throw new Exception($"Unknown type: {requestType}");
                                 AfterWorkingAction:
@@ -151,43 +149,69 @@ namespace FolderPorter
                                 {
                                     lock (m_Lock)
                                     {
-                                        if (m_RunningTask == taskGuid)
+                                        if (m_RunningTask == connectWrapper.TaskGuid)
                                             m_RunningTask = Guid.Empty;
                                     }
                                     tcpClient.Dispose();
                                     tokenSource.Cancel();
                                     tokenSource.Dispose();
                                 }
-                                Console.WriteLine($"Guid: {taskGuid} run to end.");
+                                Console.WriteLine($"Guid: {connectWrapper.TaskGuid} run to end.");
                                 GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
                                 GC.Collect();
                             });
             }
         }
 
-        private static async Task VerifyLocalPasswordAsync(TcpClient tcpClient)
+        private static async Task VerifyLocalPasswordAsync(ConnectWrapper connectWrapper)
         {
-            NetworkStream networkStream = tcpClient.GetStream();
             byte[] bytes = new byte[ProtocolBufferLength];
             int pointer = 0;
-            await networkStream.ReadExactlyAsync(bytes, pointer, 4);
+            await connectWrapper.NetworkStream.ReadExactlyAsync(bytes, pointer, 4);
             int strLength = ByteEncoder.ReadInt(bytes, ref pointer);
-            await networkStream.ReadExactlyAsync(bytes, pointer, strLength);
+            if (strLength < 0 || strLength > ProtocolBufferLength - 4)
+                throw new Exception("verify failed");
+            await connectWrapper.NetworkStream.ReadExactlyAsync(bytes, pointer, strLength);
             pointer = 0;
             string password = ByteEncoder.ReadString(bytes, ref pointer);
-            if (password != AppSettingModel.Instance.Password)
-                throw new Exception("verify failed");
+            EncryptedTransmission acceptRTType = AppSettingModel.Instance.AcceptEncryptedTransmissionType;
+            if ((acceptRTType & EncryptedTransmission.SimplePassword) != 0 &&
+                password == AppSettingModel.Instance.Password)
+            {
+                acceptRTType = EncryptedTransmission.SimplePassword;
+                goto VerifySuccess;
+            }
+            if ((acceptRTType & EncryptedTransmission.AES_CBC) != 0)
+            {
+                ByteEncoder.CreateTimebasedPassword(AppSettingModel.Instance.Password, out string result0, out string result1);
+                if (password == result0 ||
+                    password == result1)
+                {
+                    acceptRTType = EncryptedTransmission.AES_CBC;
+                    goto VerifySuccess;
+                }
+            }
+
+            throw new Exception("verify failed");
+
+        VerifySuccess:
+            if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
+            {
+                connectWrapper.CreateAes(bytes);
+                connectWrapper.AesBuffer = RentTransferBuffer();
+            }
             bytes[0] = 1;
-            await networkStream.WriteAsync(bytes, 0, 1);
+            await connectWrapper.NetworkStream.WriteAsync(bytes, 0, 1);
             Console.WriteLine("VerifyLocalPassword success");
+            connectWrapper.EncryptedTransmission = acceptRTType;
         }
 
-        private static async Task<(OptionRequestModel, OptionResponseModel)> ReadOptionAsync(NetworkStream networkStream, Guid taskGuid)
+        private static async Task<(OptionRequestModel, OptionResponseModel)> ReadOptionAsync(ConnectWrapper connectWrapper)
         {
             byte[] buffer = new byte[ProtocolBufferLength];
             while (true)
             {
-                OptionRequestModel requestModel = await ReadModelAsync<OptionRequestModel>(networkStream, buffer);
+                OptionRequestModel requestModel = await ReadModelAsync<OptionRequestModel>(connectWrapper, buffer);
                 OptionResponseModel responseModel = new OptionResponseModel(Assembly.GetExecutingAssembly().GetName().Version!);
                 responseModel.FindFolder = AppSettingModel.Instance.LocalFolders.TryGetValue(requestModel.Folder, out FolderModel folderModel);
                 if (folderModel != null)
@@ -210,20 +234,20 @@ namespace FolderPorter
                 {
                     if (!responseModel.Refause &&
                         m_RunningTask == Guid.Empty)
-                        m_RunningTask = taskGuid;
+                        m_RunningTask = connectWrapper.TaskGuid;
                     else
                         responseModel.PleaseWaiting = true;
                 }
-                WriteModel(networkStream, buffer, responseModel);
+                WriteModel(connectWrapper, buffer, responseModel);
                 if (!responseModel.PleaseWaiting)
                     return (requestModel, responseModel);
+                await Task.Delay(TimeSpan.FromSeconds(1d));
             }
         }
 
-        private static async Task AcceptPushFolderAsync(TcpClient tcpClient, string folder, string remoteUser)
+        private static async Task AcceptPushFolderAsync(ConnectWrapper connectWrapper, string folder, string remoteUser)
         {
             await Task.CompletedTask;
-            NetworkStream networkStream = tcpClient.GetStream();
             long transferTotalBytes = 0L;
             Stopwatch transferStopwatch = Stopwatch.StartNew();
 
@@ -238,11 +262,11 @@ namespace FolderPorter
                 folderModel.LoadVersionControl();
                 // It may remain an incomplete version due to a connection interruption.
                 folderModel.CheckAndRemoveInvalidVersion(folderModel.Version);
-                folderModel.StartNewVersion(remoteUser, tcpClient.Client.RemoteEndPoint);
+                folderModel.StartNewVersion(remoteUser, connectWrapper.TcpClient.Client.RemoteEndPoint);
             }
             else
             {
-                tcpClient.Client.Disconnect(false);
+                connectWrapper.TcpClient.Client.Disconnect(false);
                 return;
             }
         ReadNextTurn:
@@ -251,10 +275,10 @@ namespace FolderPorter
                 GC.Collect();
 
             // read PushFolderRequestModel
-            PushFolderRequestModel requestModel = await ReadModelAsync<PushFolderRequestModel>(networkStream, buffer);
+            PushFolderRequestModel requestModel = await ReadModelAsync<PushFolderRequestModel>(connectWrapper, buffer);
             if (requestModel.Folder != folder)
             {
-                tcpClient.Client.Disconnect(false);
+                connectWrapper.TcpClient.Client.Disconnect(false);
                 return;
             }
 
@@ -347,7 +371,7 @@ namespace FolderPorter
                     }
                 }
             }
-            WriteModel(networkStream, buffer, responseModel);
+            WriteModel(connectWrapper, buffer, responseModel);
             goto ReadNextTurn;
         SkipCompareFileSlice:
 
@@ -360,10 +384,20 @@ namespace FolderPorter
                 FileSliceHashModel fileSliceHashModel = fileIndexToModel[fileAnchor.FileIndex];
 
                 pointer = 0;
-                await networkStream.ReadExactlyAsync(buffer, pointer, 4);
+                await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, 4);
                 int bytesLength = ByteEncoder.ReadInt(buffer, ref pointer);
                 pointer = 0;
-                await networkStream.ReadExactlyAsync(buffer, pointer, bytesLength);
+
+                if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
+                    await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, bytesLength);
+                else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
+                {
+                    await connectWrapper.NetworkStream.ReadExactlyAsync(connectWrapper.AesBuffer, pointer, bytesLength);
+                    ByteEncoder.DecryptedWithAes(buffer, connectWrapper, pointer, ref bytesLength);
+                }
+                else
+                    throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
+
                 FileInfo fileInfo = folderModel.ConvertToCurrentFileInfo(fileSliceHashModel.FileRelativePath);
                 if (!fileInfo.Exists)
                 {
@@ -429,7 +463,7 @@ namespace FolderPorter
                 transferFinishResponseModel.DeleteFilesCount = folderModel.CleanFifthWheelFiles(fileRelativePathSet);
                 folderModel.CleanEmptyDirectory();
             }
-            WriteModel(networkStream, buffer, transferFinishResponseModel);
+            WriteModel(connectWrapper, buffer, transferFinishResponseModel);
 
             string transferTime;
             if (transferStopwatch.Elapsed.TotalHours > 2f)
@@ -443,10 +477,9 @@ namespace FolderPorter
             ReturnTransferBuffer(buffer);
         }
 
-        private static async Task ListFolderAsync(TcpClient tcpClient, string folder)
+        private static async Task ListFolderAsync(ConnectWrapper connectWrapper, string folder)
         {
             await Task.CompletedTask;
-            NetworkStream networkStream = tcpClient.GetStream();
             byte[] buffer = RentTransferBuffer();
 
             if (AppSettingModel.Instance.LocalFolders.TryGetValue(folder, out FolderModel folderModel) &&
@@ -456,7 +489,7 @@ namespace FolderPorter
             }
             else
             {
-                tcpClient.Client.Disconnect(false);
+                connectWrapper.TcpClient.Client.Disconnect(false);
                 return;
             }
             IReadOnlyList<ValidVersionEntry> validVersionList = folderModel.GetValidVersionList();
@@ -464,7 +497,7 @@ namespace FolderPorter
                                       orderby validVertionEntry.DateTime descending
                                       select validVertionEntry;
             ListFolderResponseModel responseModel = new ListFolderResponseModel(folder, validVersionEntries.Take(32), validVersionList.Count);
-            WriteModel(tcpClient.GetStream(), buffer, responseModel);
+            WriteModel(connectWrapper, buffer, responseModel);
 
             ReturnTransferBuffer(buffer);
         }
@@ -486,16 +519,17 @@ namespace FolderPorter
             using TcpClient tcpClient = remoteDeviceModel.TryConnect();
             if (tcpClient == null)
                 throw new Exception($"Can not connect to {remoteDeviceModel.DeviceName}");
-            using NetworkStream networkStream = tcpClient.GetStream();
+            ConnectWrapper connectWrapper = new ConnectWrapper(tcpClient, Guid.NewGuid());
             using CancellationTokenSource tokenSource = new CancellationTokenSource();
 
             Task task = Task.Run(async () =>
             {
                 try
                 {
-                    await VerifyRemotePasswordAsync(networkStream, remoteDeviceModel.DevicePassword);
-                    await SendOptionAsync(networkStream, WorkingMode.Push, folderModel.Folder);
-                    await PushFolderAsync(networkStream, folderModel, tokenSource.Token);
+                    connectWrapper.EncryptedTransmission = remoteDeviceModel.EncryptedTransmissionType;
+                    await VerifyRemotePasswordAsync(connectWrapper, remoteDeviceModel.DevicePassword);
+                    await SendOptionAsync(connectWrapper, WorkingMode.Push, folderModel.Folder);
+                    await PushFolderAsync(connectWrapper, folderModel, tokenSource.Token);
                 }
                 catch (Exception ex)
                 {
@@ -507,7 +541,7 @@ namespace FolderPorter
             tokenSource.Cancel();
         }
 
-        private static async Task PushFolderAsync(NetworkStream networkStream, FolderModel folderModel, CancellationToken cancellationToken)
+        private static async Task PushFolderAsync(ConnectWrapper connectWrapper, FolderModel folderModel, CancellationToken cancellationToken)
         {
             await Task.CompletedTask;
 
@@ -549,10 +583,10 @@ namespace FolderPorter
                         requestModel.FileSliceHashList.Add(model);
                     }
                 }
-                WriteModel(networkStream, buffer, requestModel);
+                WriteModel(connectWrapper, buffer, requestModel);
 
                 // read PushFolderResponseModel
-                PushFolderResponseModel responseModel = await ReadModelAsync<PushFolderResponseModel>(networkStream, buffer);
+                PushFolderResponseModel responseModel = await ReadModelAsync<PushFolderResponseModel>(connectWrapper, buffer);
                 if (responseModel.NeedSyncList.Count == 0)
                     continue;
                 List<FileSliceHashModel> fileSliceHashList = requestModel.FileSliceHashList;
@@ -561,7 +595,7 @@ namespace FolderPorter
                 {
                     requestModel = new PushFolderRequestModel(folderModel.Folder);
                     requestModel.BytesTransferList.AddRange(responseModel.NeedSyncList);
-                    WriteModel(networkStream, buffer, requestModel);
+                    WriteModel(connectWrapper, buffer, requestModel);
                 }
 
                 // send byte[] to remote drive
@@ -575,10 +609,18 @@ namespace FolderPorter
                     using FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read);
                     fileStream.Position = start;
                     pointer = 4;
-                    await fileStream.ReadExactlyAsync(buffer, pointer, length);
+                    if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
+                        await fileStream.ReadExactlyAsync(buffer, pointer, length);
+                    else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
+                    {
+                        await fileStream.ReadExactlyAsync(connectWrapper.AesBuffer, 0, length);
+                        ByteEncoder.EncryptedWithAes(buffer, connectWrapper, pointer, ref length);
+                    }
+                    else
+                        throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
                     pointer = 0;
                     ByteEncoder.WriteInt(buffer, length, ref pointer);
-                    await networkStream.WriteAsync(buffer, 0, length + 4);
+                    await connectWrapper.NetworkStream.WriteAsync(buffer, 0, length + 4);
                     transferTotalBytes += length;
                     LogTransferState(i, responseModel.NeedSyncList.Count, transferTotalBytes, transferStopwatch,
                                      fileSliceHashModel.FileRelativePath);
@@ -601,7 +643,7 @@ namespace FolderPorter
             {
                 TransferFinish = true
             };
-            WriteModel(networkStream, buffer, transferFinishRequestModel);
+            WriteModel(connectWrapper, buffer, transferFinishRequestModel);
             string transferTime;
             if (transferStopwatch.Elapsed.TotalHours > 2f)
                 transferTime = transferStopwatch.Elapsed.TotalHours.ToString("0.0") + " h";
@@ -609,7 +651,7 @@ namespace FolderPorter
                 transferTime = transferStopwatch.Elapsed.TotalMinutes.ToString("0.0") + " min";
             Console.WriteLine($"Have send {(transferTotalBytes / 1024f / 1024f):0.00} mb bytes in {transferTime}");
             Console.WriteLine("Waiting for remote ensure transfer finish...");
-            PushFolderResponseModel transferFinishResponseModel = await ReadModelAsync<PushFolderResponseModel>(networkStream, buffer);
+            PushFolderResponseModel transferFinishResponseModel = await ReadModelAsync<PushFolderResponseModel>(connectWrapper, buffer);
             Console.WriteLine($"Remote delete files count: {transferFinishResponseModel.DeleteFilesCount}");
             if (transferFinishResponseModel.DeleteInvalidVersion)
                 Console.WriteLine($"Remote delete invalid version. It may be because no version differences were detected.");
@@ -659,16 +701,17 @@ namespace FolderPorter
             using TcpClient tcpClient = remoteDeviceModel.TryConnect();
             if (tcpClient == null)
                 throw new Exception($"Can not connect to {remoteDeviceModel.DeviceName}");
-            using NetworkStream networkStream = tcpClient.GetStream();
+            ConnectWrapper connectWrapper = new ConnectWrapper(tcpClient, Guid.NewGuid());
             using CancellationTokenSource tokenSource = new CancellationTokenSource();
 
             Task task = Task.Run(async () =>
             {
                 try
                 {
-                    await VerifyRemotePasswordAsync(networkStream, remoteDeviceModel.DevicePassword);
-                    await SendOptionAsync(networkStream, WorkingMode.Pull, folderModel.Folder);
-                    await AcceptPushFolderAsync(tcpClient, folderModel.Folder, remoteDeviceModel.DeviceName);
+                    connectWrapper.EncryptedTransmission = remoteDeviceModel.EncryptedTransmissionType;
+                    await VerifyRemotePasswordAsync(connectWrapper, remoteDeviceModel.DevicePassword);
+                    await SendOptionAsync(connectWrapper, WorkingMode.Pull, folderModel.Folder);
+                    await AcceptPushFolderAsync(connectWrapper, folderModel.Folder, remoteDeviceModel.DeviceName);
                 }
                 catch (Exception ex)
                 {
@@ -692,7 +735,7 @@ namespace FolderPorter
             using TcpClient tcpClient = remoteDeviceModel.TryConnect();
             if (tcpClient == null)
                 throw new Exception($"Can not connect to {remoteDeviceModel.DeviceName}");
-            using NetworkStream networkStream = tcpClient.GetStream();
+            ConnectWrapper connectWrapper = new ConnectWrapper(tcpClient, Guid.NewGuid());
             using CancellationTokenSource tokenSource = new CancellationTokenSource();
             byte[] buffer = RentTransferBuffer();
 
@@ -700,9 +743,10 @@ namespace FolderPorter
             {
                 try
                 {
-                    await VerifyRemotePasswordAsync(networkStream, remoteDeviceModel.DevicePassword);
-                    await SendOptionAsync(networkStream, WorkingMode.List, argsModel.Folder);
-                    ListFolderResponseModel responseModel = await ReadModelAsync<ListFolderResponseModel>(networkStream, buffer);
+                    connectWrapper.EncryptedTransmission = remoteDeviceModel.EncryptedTransmissionType;
+                    await VerifyRemotePasswordAsync(connectWrapper, remoteDeviceModel.DevicePassword);
+                    await SendOptionAsync(connectWrapper, WorkingMode.List, argsModel.Folder);
+                    ListFolderResponseModel responseModel = await ReadModelAsync<ListFolderResponseModel>(connectWrapper, buffer);
                     Console.WriteLine(responseModel.Folder);
                     Console.WriteLine($"ValidVersionCount: {responseModel.ValidVersionCount}");
                     Console.WriteLine();
@@ -729,28 +773,46 @@ namespace FolderPorter
         }
         #endregion
 
-        private static async Task VerifyRemotePasswordAsync(NetworkStream networkStream, string devicePassword)
+        private static async Task VerifyRemotePasswordAsync(ConnectWrapper connectWrapper, string devicePassword)
         {
             byte[] bytes = new byte[ProtocolBufferLength];
             int pointer = 0;
-            ByteEncoder.WriteString(bytes, devicePassword, ref pointer);
-            await networkStream.WriteAsync(bytes, 0, pointer);
 
-            int remoteResult = networkStream.ReadByte();
+            if ((connectWrapper.EncryptedTransmission & EncryptedTransmission.AES_CBC) != 0)
+            {
+                ByteEncoder.CreateTimebasedPassword(devicePassword, out string _, out string result1);
+                ByteEncoder.WriteString(bytes, result1, ref pointer);
+                connectWrapper.EncryptedTransmission = EncryptedTransmission.AES_CBC;
+            }
+            else if ((connectWrapper.EncryptedTransmission & EncryptedTransmission.SimplePassword) != 0)
+            {
+                ByteEncoder.WriteString(bytes, devicePassword, ref pointer);
+                connectWrapper.EncryptedTransmission = EncryptedTransmission.SimplePassword;
+            }
+            else
+                throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
+
+            await connectWrapper.NetworkStream.WriteAsync(bytes, 0, pointer);
+            int remoteResult = connectWrapper.NetworkStream.ReadByte();
             if (remoteResult != 1)
                 throw new Exception($"VerityPassword failed with: {remoteResult}");
             Console.WriteLine("VerifyRemotePassword success");
+            if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
+            {
+                connectWrapper.AesBuffer = RentTransferBuffer();
+                connectWrapper.CreateAes(bytes);
+            }
         }
 
-        private static async Task SendOptionAsync(NetworkStream networkStream, WorkingMode type, string folder)
+        private static async Task SendOptionAsync(ConnectWrapper connectWrapper, WorkingMode type, string folder)
         {
             byte[] buffer = new byte[ProtocolBufferLength];
             Version version = Assembly.GetExecutingAssembly().GetName().Version!;
             while (true)
             {
                 OptionRequestModel requestModel = new OptionRequestModel(type, folder, AppSettingModel.Instance.User);
-                WriteModel(networkStream, buffer, requestModel);
-                OptionResponseModel responseModel = await ReadModelAsync<OptionResponseModel>(networkStream, buffer);
+                WriteModel(connectWrapper, buffer, requestModel);
+                OptionResponseModel responseModel = await ReadModelAsync<OptionResponseModel>(connectWrapper, buffer);
                 if (!responseModel.FindFolder)
                     throw new Exception($"Remote not find folder: {folder}");
                 if (responseModel.Refause)
@@ -768,28 +830,39 @@ namespace FolderPorter
             }
         }
 
-        private static void WriteModel<TModel>(NetworkStream networkStream, byte[] buffer, TModel model)
+        private static void WriteModel<TModel>(ConnectWrapper connectWrapper, byte[] buffer, TModel model)
         {
             string modelStr = JsonSerializer.Serialize(model);
             int pointer = 0;
-            ByteEncoder.WriteString(buffer, modelStr, ref pointer);
-            networkStream.Write(buffer, 0, pointer);
+            if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
+                ByteEncoder.WriteString(buffer, modelStr, ref pointer);
+            else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
+                ByteEncoder.WriteStringWithAes(buffer, connectWrapper, modelStr, ref pointer);
+            else
+                throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
+            connectWrapper.NetworkStream.Write(buffer, 0, pointer);
             if (AppSettingModel.Instance.LogProtocal)
             {
                 Console.WriteLine(model!.GetType().FullName);
                 Console.WriteLine(modelStr);
             }
-            networkStream.Flush();
+            connectWrapper.NetworkStream.Flush();
         }
 
-        private static async Task<TModel> ReadModelAsync<TModel>(NetworkStream networkStream, byte[] buffer)
+        private static async Task<TModel> ReadModelAsync<TModel>(ConnectWrapper connectWrapper, byte[] buffer)
         {
             int pointer = 0;
-            await networkStream.ReadExactlyAsync(buffer, pointer, 4);
+            await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, 4);
             int modelStrLength = ByteEncoder.ReadInt(buffer, ref pointer);
-            await networkStream.ReadExactlyAsync(buffer, pointer, modelStrLength);
+            await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, modelStrLength);
             pointer = 0;
-            string modelStr = ByteEncoder.ReadString(buffer, ref pointer);
+            string modelStr;
+            if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
+                modelStr = ByteEncoder.ReadString(buffer, ref pointer);
+            else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
+                modelStr = ByteEncoder.ReadStringWithAes(buffer, connectWrapper, ref pointer);
+            else
+                throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
             if (AppSettingModel.Instance.LogProtocal)
             {
                 Console.WriteLine(typeof(TModel).FullName);
