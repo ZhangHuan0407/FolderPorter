@@ -175,6 +175,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - "SimplePassword" No encryption is applied during the transmission process.
   - "AES_CBC" Transmit time-salted MD5 at the beginning of the connection and enable encryption algorithms during data transmission.
 - HardLinkInsteadOfCopy: When VersionControl is enabled, hard links are used to save storage space if the file is identical to the previous version.
+  - exFAT is not support hard link!
+  - Degenerates back to a binary copy on failure
 - MaxWorkerThreadCount: The upper limit of the calculation thread count for the thread pool
 - MaxIOThreadCount: The upper limit of the IO thread count for the thread pool
 - RemoteBuzyRetrySeconds: Delay this time before retrying when the remote device is busy

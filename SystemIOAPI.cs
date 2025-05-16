@@ -1,8 +1,7 @@
 ﻿using FolderPorter.Model;
+using Mono.Unix.Native;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace FolderPorter
 {
@@ -36,10 +35,17 @@ namespace FolderPorter
             DirectoryInfo directoryInfo = new DirectoryInfo(headDirectoryPath);
             if (directoryInfo.Exists && !string.IsNullOrEmpty(directoryInfo.LinkTarget))
                 directoryInfo.Delete();
-            Directory.CreateSymbolicLink(headDirectoryPath, directoryPath);
-            directoryInfo.Refresh();
-            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-                directoryInfo.UnixFileMode = Program.DirectoryUnixFileMode;
+            try
+            {
+                Directory.CreateSymbolicLink(headDirectoryPath, directoryPath);
+                directoryInfo.Refresh();
+                if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                    directoryInfo.UnixFileMode = Program.DirectoryUnixFileMode;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(ex);
+            }
         }
 
         public static void SetFileMode(FileInfo fileInfo, UnixFileMode fileUnixFileMode)
@@ -61,13 +67,27 @@ namespace FolderPorter
                 Environment.OSVersion.Platform == PlatformID.Win32NT)
             {
                 if (!CreateHardLink(targetFileInfo.FullName, sourceFileInfo.FullName, IntPtr.Zero))
-                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                {
+                    //int err = Marshal.GetLastWin32Error();
+                    // ERROR_INVALID_FUNCTION 1?
+                    File.Copy(sourceFileInfo.FullName, targetFileInfo.FullName);
+                }
             }
             else if (AppSettingModel.Instance.HardLinkInsteadOfCopy &&
                 OperatingSystem.IsLinux())
-                Mono.Unix.Native.Syscall.link(sourceFileInfo.FullName, targetFileInfo.FullName);
+            {
+                int result = Syscall.link(sourceFileInfo.FullName, targetFileInfo.FullName);
+                if (result == -1)
+                {
+                    //Errno err = Syscall.GetLastError();
+                    // EXDEV 18
+                    // ENOTSUP  95
+                    File.Copy(sourceFileInfo.FullName, targetFileInfo.FullName);
+                }
+            }
             else
                 File.Copy(sourceFileInfo.FullName, targetFileInfo.FullName);
+            targetFileInfo.Refresh();
             SetFileMode(targetFileInfo, Program.FileUnixFileMode);
         }
     }

@@ -184,6 +184,8 @@ sudo ln -s /lib/FolderPorter/FolderPorter /bin/FolderPorter
   - "SimplePassword" 在传输数据时没有任何加密
   - "AES_CBC" 在连接开始时传输基于时间加盐的 MD5，并在传输数据时启用加密算法
 - HardLinkInsteadOfCopy 当启用 VersionControl 时，如果与上一版本文件完全相同，则使用硬链接以节省存储空间
+  - exFAT 不支持文件硬链接!
+  - 失败时退回二进制拷贝
 - MaxWorkerThreadCount 线程池的运算线程数量上限
 - MaxIOThreadCount 线程池的IO线程数量上限
 - RemoteBuzyRetrySeconds 当远程设备处于繁忙状态，延迟此时间后重试
