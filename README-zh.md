@@ -42,6 +42,7 @@
 - [Push 使用流程](#push-使用流程)
 - [Pull 使用流程](#pull-使用流程)
 - [List 使用流程](#list-使用流程)
+- [忽略文件](#忽略文件)
 - [集群部署](#集群部署)
 - [多网段切换](#多网段切换)
 - [版本控制文件夹结构](#版本控制文件夹结构)
@@ -104,12 +105,13 @@ wget -O /var/FolderPorter.zip download-url-here
 unzip FolderPorter.zip -d FolderPorter
 cd /lib
 mkdir FolderPorter
+mkdir /etc/FolderPorter
 mv /var/FolderPorter/Linux-*/* /lib/FolderPorter/
-cp /lib/FolderPorter/AppSettingsTemplate.json /lib/FolderPorter/AppSettings.json
+cp /lib/FolderPorter/AppSettingsTemplate.json /etc/FolderPorter/AppSettings.json
 chmod +x /lib/FolderPorter
 chmod +x /lib/FolderPorter/FolderPorter
 chmod +r /lib/FolderPorter/*
-ls -al FolderPorter/
+ls -al /lib/FolderPorter/
 # drwxrwxrwx   2 root         root           4096 May 10 14:32 .
 # -rwxr-xr-x   1 root         root         123942 May 10 14:32 FolderPorter
 # -rw-r--r--   1 root         root            431 May 10 13:19 AppSettings.json
@@ -326,6 +328,18 @@ ValidVersionCount: 2
   "DateTime": "2025-05-12T21:36:52.9075853+08:00",
   "RemoteUser": "PC_2"
 }
+```
+
+# 忽略文件
+- 在 RootPath 文件夹添加 .Ignore 文件
+```
+# 忽略目标文件
+abc.txt
+# 忽略目标文件夹下的文件，包含：
+# director/a.txt
+# director/b/a.txt
+# director/b/c
+directory/*
 ```
 
 # 集群部署

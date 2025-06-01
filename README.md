@@ -37,6 +37,7 @@
 - [How to Push](#how-to-push)
 - [How to Pull](#how-to-pull)
 - [How to List](#how-to-list)
+- [Ignore File](#ignore-file)
 - [Cluster Deployment](#cluster-deployment)
 - [Multi-network Segment Switching](#multi-network-segment-switching)
 - [Version Control File Tree](#version-control-file-tree)
@@ -99,12 +100,13 @@ wget -O /var/FolderPorter.zip download-url-here
 unzip FolderPorter.zip -d FolderPorter
 cd /lib
 mkdir FolderPorter
+mkdir /etc/FolderPorter
 mv /var/FolderPorter/Linux-*/* /lib/FolderPorter/
-cp /lib/FolderPorter/AppSettingsTemplate.json /lib/FolderPorter/AppSettings.json
+cp /lib/FolderPorter/AppSettingsTemplate.json /etc/FolderPorter/AppSettings.json
 chmod +x /lib/FolderPorter
 chmod +x /lib/FolderPorter/FolderPorter
 chmod +r /lib/FolderPorter/*
-ls -al FolderPorter/
+ls -al /lib/FolderPorter/
 # drwxrwxrwx   2 root         root           4096 May 10 14:32 .
 # -rwxr-xr-x   1 root         root         123942 May 10 14:32 FolderPorter
 # -rw-r--r--   1 root         root            431 May 10 13:19 AppSettings.json
@@ -312,6 +314,18 @@ ValidVersionCount: 2
   "DateTime": "2025-05-12T21:36:52.9075853+08:00",
   "RemoteUser": "PC_2"
 }
+```
+
+# Ignore File
+- Add the . Ignore file
+```
+# Ignore the target file
+abc.txt
+# Ignore the files in the target folder, include:
+# director/a.txt
+# director/b/a.txt
+# director/b/c
+directory/*
 ```
 
 # Cluster Deployment
