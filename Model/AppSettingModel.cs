@@ -10,6 +10,7 @@ namespace FolderPorter.Model
     {
         private static string AppSettingsTemplateFileName = $"{Path.GetDirectoryName(Environment.ProcessPath)}/AppSettingsTemplate.json";
         private static string AppSettingsFileName = $"{Path.GetDirectoryName(Environment.ProcessPath)}/AppSettings.json";
+        private static string LinuxAppSettingsFileName = $"/etc/FolderPorter/AppSettings.json";
 
         internal static AppSettingModel Instance = new AppSettingModel();
 
@@ -53,7 +54,13 @@ namespace FolderPorter.Model
         public static void Reload()
         {
             string appSettingJson;
-            if (File.Exists(AppSettingsFileName))
+            if (OperatingSystem.IsLinux() &&
+                File.Exists(LinuxAppSettingsFileName))
+            {
+                appSettingJson = File.ReadAllText(LinuxAppSettingsFileName);
+                IsTemplate = false;
+            }
+            else if (File.Exists(AppSettingsFileName))
             {
                 appSettingJson = File.ReadAllText(AppSettingsFileName);
                 IsTemplate = false;
