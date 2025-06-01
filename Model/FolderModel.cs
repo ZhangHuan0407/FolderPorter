@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO.Enumeration;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -14,9 +15,12 @@ namespace FolderPorter.Model
         public bool VersionControl { get; set; }
 
         private string VersionControlFilePath => $"{RootPath}/{Program.VersionControlFile}";
+        private string IgnoreFilePath => $"{RootPath}/{Program.IgnoreFile}";
         private VersionControlModel? m_VersionControlModel;
         public string? Version => m_VersionControlModel?.Version;
         public string? LastSuccessVersion => m_VersionControlModel?.LastSuccessVersion;
+
+        private IgnoreModel? m_IgnoreModel;
 
         [JsonIgnore]
         public string Folder { get; set; }
@@ -107,6 +111,11 @@ namespace FolderPorter.Model
                 string filePath = filePathList[i].Replace("\\", "/");
                 FileInfo fileInfo = new FileInfo(filePath);
                 string fileRelativePath = filePath.Substring(prefixStr.Length);
+                if (fileRelativePath == Program.IgnoreFile)
+                    continue;
+                if (m_IgnoreModel?.ShouldIgnore(fileRelativePath) ?? false)
+                    continue;
+                
                 yield return (fileRelativePath, fileInfo);
             }
         }
@@ -175,6 +184,17 @@ namespace FolderPorter.Model
                 string versionControlStr = File.ReadAllText(VersionControlFilePath);
                 m_VersionControlModel = JsonSerializer.Deserialize<VersionControlModel>(versionControlStr)!;
             }
+        }
+
+        public void LoadIgnore()
+        {
+            if (File.Exists(IgnoreFilePath))
+            {
+                string[] lines = File.ReadAllLines(IgnoreFilePath);
+                m_IgnoreModel = new IgnoreModel(lines);
+            }
+            else
+                m_IgnoreModel = null;
         }
 
         public void CheckAndRemoveInvalidVersion(string? version)

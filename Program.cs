@@ -17,6 +17,7 @@ namespace FolderPorter
         internal const int TransferBufferLength = SliceLength + ProtocolBufferLength;
 
         internal const string VersionControlFile = ".VersionControl.json";
+        internal const string IgnoreFile = ".Ignore";
         internal const string HeadDirectory = "Head";
 
         internal readonly static UnixFileMode DirectoryUnixFileMode = UnixFileMode.UserRead |
@@ -260,6 +261,7 @@ namespace FolderPorter
             if (AppSettingModel.Instance.LocalFolders.TryGetValue(folder, out FolderModel folderModel))
             {
                 folderModel.LoadVersionControl();
+                folderModel.LoadIgnore();
                 // It may remain an incomplete version due to a connection interruption.
                 folderModel.CheckAndRemoveInvalidVersion(folderModel.Version);
                 folderModel.StartNewVersion(remoteUser, connectWrapper.TcpClient.Client.RemoteEndPoint);
@@ -486,6 +488,7 @@ namespace FolderPorter
                 folderModel.VersionControl)
             {
                 folderModel.LoadVersionControl();
+                folderModel.LoadIgnore();
             }
             else
             {
@@ -548,6 +551,7 @@ namespace FolderPorter
             // calculate file hash in task
             Queue<FileSliceHashModel> waitingSyncFileList = new Queue<FileSliceHashModel>();
             folderModel.LoadVersionControl();
+            folderModel.LoadIgnore();
             Task calculateFileHashTask = CalculateFileSliceHashAsync(folderModel, waitingSyncFileList, cancellationToken);
             long transferTotalBytes = 0L;
             Stopwatch transferStopwatch = Stopwatch.StartNew();
