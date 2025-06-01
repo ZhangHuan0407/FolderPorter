@@ -41,6 +41,7 @@
 - [Cluster Deployment](#cluster-deployment)
 - [Multi-network Segment Switching](#multi-network-segment-switching)
 - [Version Control File Tree](#version-control-file-tree)
+- [Enable Encrypted Transmission](#enable-encrypted-transmission)
 
 # Support
 |                                                                   | Windows x86 | Windows x86-64 | Windows arm64 | Linux arm64 | Linux x86-64 | MacOS x86-64 | MacOS M1 |
@@ -353,8 +354,43 @@ PC_4[Computer C]--pull-->PC_1
 - .VersionControl.json
 # A folder for a specific version, folder name is the first 8 digits of the version number
 - abcd1234
+  # 若干文件
+  - *
 # A folder for a specific version, folder name is the first 8 digits of the version number
 - 1234abcd
+  # 若干文件
+  - *
 # The folder links to the last successfully generated version. On Windows, administrator rights are required to create folder links
 - Head
+```
+
+# Enable Encrypted Transmission
+- Check to see if hardware-level AES is supported, and if so, encryption and decryption will be fast
+```
+# You can use git bash to view it on Windows
+grep -m1 -o aes /proc/cpuinfo
+
+
+# Test AES-128-CBC performance
+openssl speed -evp aes-128-cbc
+
+# Raspberry 4b about 40 m/s
+# type             16 bytes     64 bytes    256 bytes   1024 bytes   8192 bytes  16384 bytes
+# AES-128-CBC(k/s) 36865.97k    40292.69k    41630.31k    41780.91k    41882.97k    42023.04k
+```
+
+- Use AES-CBC symmetric encryption
+
+```
+# server AppSettings.json
+"AcceptEncryptedTransmission": "AES_CBC"
+
+# another drive AppSettings.json
+"RemoteDevice": {
+    "PC_1": {
+        "IP": "192.168.1.1:17979",
+        "DevicePassword": "123",
+        "EncryptedTransmission": "AES_CBC"
+    }
+},
 ```

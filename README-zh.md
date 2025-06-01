@@ -368,8 +368,12 @@ PC_4[Computer C]--pull-->PC_1
 - .VersionControl.json
 # 一个版本所在的文件夹，文件夹名为版本号前8位
 - abcd1234
+  # 若干文件
+  - *
 # 一个版本所在的文件夹，文件夹名为版本号前8位
 - 1234abcd
+  # 若干文件
+  - *
 # 文件夹链接到最后一个成功生成版本。Windows 下需要 administrator 才能生成文件夹链接
 - Head
 ```
