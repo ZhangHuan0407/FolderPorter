@@ -100,7 +100,10 @@ namespace FolderPorter.Model
             List<string> remoteDeviceList = new List<string>();
             foreach (string remoteDevice in AppSettingModel.Instance.RemoteDevice.Keys)
             {
-                Console.WriteLine($"[{remoteDeviceList.Count.ToString().PadLeft(2)}] {remoteDevice}");
+                Console.ForegroundColor = ConsoleColor.DarkBlue;
+                Console.Write($"[{remoteDeviceList.Count.ToString().PadLeft(2)}] ");
+                Console.ForegroundColor = ConsoleColor.Black;
+                Console.WriteLine($"{remoteDevice}");
                 remoteDeviceList.Add(remoteDevice);
             }
             RemoteDrive = string.Empty;
@@ -122,10 +125,14 @@ namespace FolderPorter.Model
 
             Console.WriteLine("select one of folder (input name or number):");
             List<string> folderList = new List<string>();
-            foreach (string folder in AppSettingModel.Instance.LocalFolders.Keys)
+            foreach (FolderModel folderModel in AppSettingModel.Instance.LocalFolders.Values)
             {
-                Console.WriteLine($"[{folderList.Count.ToString().PadLeft(2)}] {folder}");
-                folderList.Add(folder);
+                Console.ForegroundColor = ConsoleColor.DarkBlue;
+                Console.Write($"[{folderList.Count.ToString().PadLeft(2)}] ");
+                Console.Write($"{(folderModel.CanRead ? "R" : "_")}{(folderModel.CanWrite ? "W" : "_")} ");
+                Console.ForegroundColor = ConsoleColor.Black;
+                Console.WriteLine($"{folderModel.Folder}");
+                folderList.Add(Folder);
             }
             Folder = string.Empty;
             while (true)
