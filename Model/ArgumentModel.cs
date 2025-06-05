@@ -132,7 +132,7 @@ namespace FolderPorter.Model
                 Console.Write($"{(folderModel.CanRead ? "R" : "_")}{(folderModel.CanWrite ? "W" : "_")} ");
                 Console.ForegroundColor = ConsoleColor.Black;
                 Console.WriteLine($"{folderModel.Folder}");
-                folderList.Add(Folder);
+                folderList.Add(folderModel.Folder);
             }
             Folder = string.Empty;
             while (true)
