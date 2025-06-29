@@ -77,10 +77,9 @@ namespace FolderPorter.Model
                 AppSettingModel.Instance.SetTcpClientParameter(tcpClient);
                 tcpClient.Connect(iPEndPoint);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                if (AppSettingModel.Instance.LogDebug)
-                    Console.WriteLine($"Try connect {iPEndPoint} failed.");
+                Console.WriteLine($"Try connect {iPEndPoint} failed.\n{ex}");
             }
             finally
             {

@@ -102,7 +102,7 @@ namespace FolderPorter.Model
             {
                 Console.ForegroundColor = ConsoleColor.DarkBlue;
                 Console.Write($"[{remoteDeviceList.Count.ToString().PadLeft(2)}] ");
-                Console.ForegroundColor = ConsoleColor.Black;
+                Console.ResetColor();
                 Console.WriteLine($"{remoteDevice}");
                 remoteDeviceList.Add(remoteDevice);
             }
@@ -130,7 +130,7 @@ namespace FolderPorter.Model
                 Console.ForegroundColor = ConsoleColor.DarkBlue;
                 Console.Write($"[{folderList.Count.ToString().PadLeft(2)}] ");
                 Console.Write($"{(folderModel.CanRead ? "R" : "_")}{(folderModel.CanWrite ? "W" : "_")} ");
-                Console.ForegroundColor = ConsoleColor.Black;
+                Console.ResetColor();
                 Console.WriteLine($"{folderModel.Folder}");
                 folderList.Add(folderModel.Folder);
             }
