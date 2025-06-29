@@ -126,6 +126,10 @@ Description=FolderPorter server :17979 /lib/FolderPorter
 After=network.target
 
 [Service]
+# If environment don't have dotnet location in DOTNET_ROOT and PATH, you need append two lines.
+# Environment="DOTNET_ROOT=/root/.dotnet"
+# Environment="PATH=/root/.dotnet:$PATH"
+
 WorkingDirectory=/lib/FolderPorter
 ExecStart=/lib/FolderPorter/FolderPorter server
 

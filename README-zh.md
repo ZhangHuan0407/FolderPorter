@@ -34,6 +34,7 @@
   - [环境配置](#环境配置)
   - [拷贝文件](#拷贝文件)
   - [Linux 开启自启服务](#linux-开启自启服务)
+  - [确认端口处于监听状态](#确认端口处于监听状态)
   - [Linux 添加指令到 shell](#linux-添加指令到-shell)
 - [更新 AppSettings.json](#更新-appsettingsjson)
   - [需要设置的配置](#需要设置的配置)
@@ -130,6 +131,10 @@ Description=FolderPorter server :17979 /lib/FolderPorter
 After=network.target
 
 [Service]
+# 如果环境变量 DOTNET_ROOT 或 PATH 缺少 dotnet 运行时位置，需要添加以下两行环境变量
+# Environment="DOTNET_ROOT=/root/.dotnet"
+# Environment="PATH=/root/.dotnet:$PATH"
+
 WorkingDirectory=/lib/FolderPorter
 ExecStart=/lib/FolderPorter/FolderPorter server
 
@@ -157,6 +162,11 @@ systemctl status FolderPorter.service
 systemctl restart FolderPorter.service
 # 停止，如果设置了Restart=on-failure，记得先disable再stop
 systemctl stop FolderPorter.service
+```
+
+## 确认端口处于监听状态
+```
+lsof -i:17979
 ```
 
 ## Linux 添加指令到 shell
