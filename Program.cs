@@ -11,8 +11,8 @@ namespace FolderPorter
 {
     internal static class Program
     {
-        internal const int ProtocolBufferLength = 1024;
-        internal const int SyncFilePreTurn = 8;
+        internal const int ProtocolBufferLength = 2048;
+        internal const int SyncFilePreTurn = 16;
         internal const int SliceLength = 1024 * 1024;
         internal const int TransferBufferLength = SliceLength + ProtocolBufferLength;
 
@@ -273,7 +273,7 @@ namespace FolderPorter
             }
         ReadNextTurn:
             turn++;
-            if (turn % 50 == 49)
+            if (turn % 200 == 199)
                 GC.Collect();
 
             // read PushFolderRequestModel
@@ -567,7 +567,7 @@ namespace FolderPorter
                 if (cancellationToken.IsCancellationRequested)
                     break;
                 turn++;
-                if (turn % 50 == 49)
+                if (turn % 200 == 199)
                     GC.Collect();
 
                 // copy FileSliceHashModel to PushFolderRequestModel
@@ -671,6 +671,7 @@ namespace FolderPorter
                 int fileIndex = 0;
                 byte[] crcBuffer = null;
                 foreach ((string fileRelativePath, FileInfo fileInfo) in folderModel.EnumFiles())
+                Stopwatch stopwatch = Stopwatch.StartNew();
                 {
                     fileIndex++;
                     FileSliceHashModel sliceHashModel = new FileSliceHashModel(fileIndex, fileRelativePath, fileInfo, ref crcBuffer);
@@ -682,10 +683,15 @@ namespace FolderPorter
                     }
                     if (cancellationToken.IsCancellationRequested)
                         break;
-                    if (count > SyncFilePreTurn * 10)
-                        await Task.Delay(50);
-                    else if (count > SyncFilePreTurn * 4)
-                        await Task.Delay(5);
+                    long elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
+                    if (elapsedMilliseconds > 500)
+                    {
+                        await Task.Delay(elapsedMilliseconds > 2000 ? 300 : 100);
+                        stopwatch.Restart();
+                    }
+                    if (fileIndex % SyncFilePreTurn == 0 &&
+                        count > SyncFilePreTurn * 4)
+                        await Task.Delay(20);
                 }
             });
         }
