@@ -411,7 +411,7 @@ namespace FolderPorter
                 }
                 using (FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite))
                 {
-                    int start = fileAnchor.SliceIndex * SliceLength;
+                    long start = (long)fileAnchor.SliceIndex * SliceLength;
                     fileStream.Position = start;
                     await fileStream.WriteAsync(buffer, 0, bytesLength);
                 }
@@ -607,7 +607,7 @@ namespace FolderPorter
                 {
                     FileAnchor fileAnchor = responseModel.NeedSyncList[i];
                     FileSliceHashModel fileSliceHashModel = fileSliceHashList.First(model => model.FileIndex == fileAnchor.FileIndex);
-                    long start = fileAnchor.SliceIndex * SliceLength;
+                    long start = (long)fileAnchor.SliceIndex * SliceLength;
                     int length = (int)Math.Min(fileSliceHashModel.FileTotalLength - start, SliceLength);
                     FileInfo fileInfo = folderModel.ConvertToLastSuccessFileInfo(fileSliceHashModel.FileRelativePath);
                     using FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read);
