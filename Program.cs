@@ -670,8 +670,8 @@ namespace FolderPorter
             {
                 int fileIndex = 0;
                 byte[] crcBuffer = null;
-                foreach ((string fileRelativePath, FileInfo fileInfo) in folderModel.EnumFiles())
                 Stopwatch stopwatch = Stopwatch.StartNew();
+                foreach ((string fileRelativePath, FileInfo fileInfo) in folderModel.EnumFiles())
                 {
                     fileIndex++;
                     FileSliceHashModel sliceHashModel = new FileSliceHashModel(fileIndex, fileRelativePath, fileInfo, ref crcBuffer);
