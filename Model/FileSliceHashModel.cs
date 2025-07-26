@@ -7,6 +7,7 @@
         public int FileIndex { get; set; }
         public string FileRelativePath { get; set; }
         public long FileTotalLength { get; set; }
+        public long FileSliceLength { get; set; }
 
         public FileSliceHashModel()
         {
@@ -22,6 +23,7 @@
                 for (long start = 0; start < FileTotalLength; start += Program.SliceLength)
                 {
                     long length = Math.Min(Program.SliceLength, FileTotalLength - start);
+                    FileSliceLength = length;
                     string crc32 = CRC32.ComputeStream(fileStream, start, length, ref buffer).CRC32Str;
                     CRCList.Add(crc32);
                 }

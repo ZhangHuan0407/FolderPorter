@@ -583,7 +583,7 @@ namespace FolderPorter
                         sumFileSize < 100 * SliceLength)
                     {
                         FileSliceHashModel model = waitingSyncFileList.Dequeue();
-                        sumFileSize += model.FileTotalLength;
+                        sumFileSize += model.FileSliceLength;
                         requestModel.FileSliceHashList.Add(model);
                     }
                 }
@@ -608,7 +608,7 @@ namespace FolderPorter
                     FileAnchor fileAnchor = responseModel.NeedSyncList[i];
                     FileSliceHashModel fileSliceHashModel = fileSliceHashList.First(model => model.FileIndex == fileAnchor.FileIndex);
                     long start = (long)fileAnchor.SliceIndex * SliceLength;
-                    int length = (int)Math.Min(fileSliceHashModel.FileTotalLength - start, SliceLength);
+                    int length = (int)fileSliceHashModel.FileSliceLength;
                     FileInfo fileInfo = folderModel.ConvertToLastSuccessFileInfo(fileSliceHashModel.FileRelativePath);
                     using FileStream fileStream = new FileStream(fileInfo.FullName, FileMode.Open, FileAccess.Read);
                     fileStream.Position = start;
