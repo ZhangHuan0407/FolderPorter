@@ -15,6 +15,7 @@ namespace FolderPorter
         internal const int SyncFilePreTurn = 16;
         internal const int SliceLength = 1024 * 1024;
         internal const int TransferBufferLength = SliceLength + ProtocolBufferLength;
+        internal const int TransferStringLimit = SliceLength / 4;
 
         internal const string VersionControlFile = ".VersionControl.json";
         internal const string IgnoreFile = ".Ignore";
@@ -174,7 +175,7 @@ namespace FolderPorter
                 throw new Exception("verify failed");
             await connectWrapper.NetworkStream.ReadExactlyAsync(bytes, pointer, strLength);
             pointer = 0;
-            string password = ByteEncoder.ReadString(bytes, ref pointer);
+            string password = ByteEncoder.ReadString(bytes, out int _, ref pointer);
             EncryptedTransmission acceptRTType = AppSettingModel.Instance.AcceptEncryptedTransmissionType;
             if ((acceptRTType & EncryptedTransmission.SimplePassword) != 0 &&
                 password == AppSettingModel.Instance.Password)
@@ -800,12 +801,12 @@ namespace FolderPorter
             if ((connectWrapper.EncryptedTransmission & EncryptedTransmission.AES_CBC) != 0)
             {
                 ByteEncoder.CreateTimebasedPassword(devicePassword, out string _, out string result1);
-                ByteEncoder.WriteString(bytes, result1, ref pointer);
+                ByteEncoder.WriteString(bytes, result1, 0, ref pointer);
                 connectWrapper.EncryptedTransmission = EncryptedTransmission.AES_CBC;
             }
             else if ((connectWrapper.EncryptedTransmission & EncryptedTransmission.SimplePassword) != 0)
             {
-                ByteEncoder.WriteString(bytes, devicePassword, ref pointer);
+                ByteEncoder.WriteString(bytes, devicePassword, 0, ref pointer);
                 connectWrapper.EncryptedTransmission = EncryptedTransmission.SimplePassword;
             }
             else
@@ -852,14 +853,28 @@ namespace FolderPorter
         private static void WriteModel<TModel>(ConnectWrapper connectWrapper, byte[] buffer, TModel model)
         {
             string modelStr = JsonSerializer.Serialize(model);
-            int pointer = 0;
-            if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
-                ByteEncoder.WriteString(buffer, modelStr, ref pointer);
-            else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
-                ByteEncoder.WriteStringWithAes(buffer, connectWrapper, modelStr, ref pointer);
-            else
-                throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
-            connectWrapper.NetworkStream.Write(buffer, 0, pointer);
+            int blockCount = (modelStr.Length + TransferStringLimit - 1) / TransferStringLimit;
+            for (int blockIndex = 0; blockIndex < blockCount; blockIndex++)
+            {
+                int start = blockIndex * TransferStringLimit;
+                int length = Math.Min(modelStr.Length - start, TransferStringLimit);
+                string str;
+                if (blockCount == 1)
+                    str = modelStr;
+                else
+                    str = modelStr.Substring(start, length);
+
+                int pointer = 0;
+                int blockRemain = blockCount - blockIndex - 1;
+                if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
+                    ByteEncoder.WriteString(buffer, modelStr, blockRemain, ref pointer);
+                else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
+                    ByteEncoder.WriteStringWithAes(buffer, connectWrapper, modelStr, blockRemain, ref pointer);
+                else
+                    throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
+                connectWrapper.NetworkStream.Write(buffer, 0, pointer);
+            }
+
             if (AppSettingModel.Instance.LogProtocal)
             {
                 Console.WriteLine(model!.GetType().FullName);
@@ -875,13 +890,22 @@ namespace FolderPorter
             int modelStrLength = ByteEncoder.ReadInt(buffer, ref pointer);
             await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, modelStrLength);
             pointer = 0;
-            string modelStr;
-            if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
-                modelStr = ByteEncoder.ReadString(buffer, ref pointer);
-            else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
-                modelStr = ByteEncoder.ReadStringWithAes(buffer, connectWrapper, ref pointer);
-            else
-                throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
+            string modelStr = null;
+            int blockRemain = 0;
+            do
+            {
+                string recieveStr;
+                if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
+                    recieveStr = ByteEncoder.ReadString(buffer, out blockRemain, ref pointer);
+                else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
+                    recieveStr = ByteEncoder.ReadStringWithAes(buffer, connectWrapper, out blockRemain, ref pointer);
+                else
+                    throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
+                if (string.IsNullOrEmpty(modelStr))
+                    modelStr = recieveStr;
+                else
+                    modelStr += recieveStr;
+            } while (blockRemain > 0);
             if (AppSettingModel.Instance.LogProtocal)
             {
                 Console.WriteLine(typeof(TModel).FullName);

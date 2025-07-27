@@ -33,22 +33,26 @@ namespace FolderPorter
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int WriteString(byte[] buffer, string str, ref int pointer)
+        public static int WriteString(byte[] buffer, string str, int blockRemain, ref int pointer)
         {
-            int length = Encoding.UTF8.GetBytes(str, 0, str.Length, buffer, pointer + 4);
+            int length = Encoding.UTF8.GetBytes(str, 0, str.Length, buffer, pointer + 8);
             WriteInt(buffer, length, ref pointer);
+            WriteInt(buffer, blockRemain, ref pointer);
             pointer += length;
             length += 4;
             return length;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static string ReadString(byte[] buffer, ref int pointer)
+        public static string ReadString(byte[] buffer, out int blockRemain, ref int pointer)
         {
             int length = ReadInt(buffer, ref pointer);
+            blockRemain = ReadInt(buffer, ref pointer);
             if (length <= 0 ||
                 buffer.Length - pointer < length)
                 throw new ArgumentException($"ReadString with length: {length}");
+            if (blockRemain < 0)
+                throw new ArgumentException($"ReadString with blockRemain: {blockRemain}");
 
             string str = Encoding.UTF8.GetString(buffer, pointer, length);
             pointer += length;
@@ -56,7 +60,7 @@ namespace FolderPorter
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void WriteStringWithAes(byte[] buffer, ConnectWrapper connectWrapper, string str, ref int pointer)
+        public static void WriteStringWithAes(byte[] buffer, ConnectWrapper connectWrapper, string str, int blockRemain, ref int pointer)
         {
             int rawBytesLength = Encoding.UTF8.GetBytes(str, 0, str.Length, connectWrapper.AesBuffer, 0);
 
@@ -79,12 +83,14 @@ namespace FolderPorter
             pointer += finalBlock.Length;
 
             WriteInt(buffer, pointer - point0 - 4, ref point0);
+            WriteInt(buffer, blockRemain, ref point0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static string ReadStringWithAes(byte[] buffer, ConnectWrapper connectWrapper, ref int pointer)
+        public static string ReadStringWithAes(byte[] buffer, ConnectWrapper connectWrapper, out int blockRemain, ref int pointer)
         {
             int encryptedLength = ReadInt(buffer, ref pointer);
+            blockRemain = ReadInt(buffer, ref pointer);
             if (encryptedLength <= 0 || buffer.Length - pointer < encryptedLength)
                 throw new ArgumentException($"Invalid encrypted length: {encryptedLength}");
 
