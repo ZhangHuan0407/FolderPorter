@@ -165,7 +165,7 @@ namespace FolderPorter.Model
                 else if (keyChar == 'n')
                     throw new Exception("User Cancel");
                 else
-                    Console.WriteLine("\r \r");
+                    Console.Write("\r \r");
             }
         }
     }

@@ -552,7 +552,8 @@ namespace FolderPorter
             Queue<FileSliceHashModel> waitingSyncFileList = new Queue<FileSliceHashModel>();
             folderModel.LoadVersionControl();
             folderModel.LoadIgnore();
-            Task calculateFileHashTask = CalculateFileSliceHashAsync(folderModel, waitingSyncFileList, cancellationToken);
+            Task calculateFileHashTask = CalculateFileSliceHashAsync(folderModel, waitingSyncFileList,
+                                                                     connectWrapper.TaskGuid, cancellationToken);
             long transferTotalBytes = 0L;
             Stopwatch transferStopwatch = Stopwatch.StartNew();
 
@@ -629,8 +630,6 @@ namespace FolderPorter
                     LogTransferState(i, responseModel.NeedSyncList.Count, transferTotalBytes, transferStopwatch,
                                      fileSliceHashModel.FileRelativePath);
                 }
-                Console.Write('\n');
-
                 continue;
             WaitAndTryAgain:
                 await Task.Delay(50);
@@ -664,13 +663,14 @@ namespace FolderPorter
         }
 
         private static Task CalculateFileSliceHashAsync(FolderModel folderModel, Queue<FileSliceHashModel> waitingSyncFileList,
-                                                        CancellationToken cancellationToken)
+                                                        Guid taskGuid, CancellationToken cancellationToken)
         {
             return Task.Run(async () =>
             {
                 int fileIndex = 0;
                 byte[] crcBuffer = null;
                 Stopwatch stopwatch = Stopwatch.StartNew();
+                DateTime lastLogTime = DateTime.Now;
                 foreach ((string fileRelativePath, FileInfo fileInfo) in folderModel.EnumFiles())
                 {
                     fileIndex++;
@@ -692,7 +692,16 @@ namespace FolderPorter
                     if (fileIndex % SyncFilePreTurn == 0 &&
                         count > SyncFilePreTurn * 4)
                         await Task.Delay(20);
+                    if (fileIndex % SyncFilePreTurn == 0 &&
+                        (DateTime.Now - lastLogTime).TotalMinutes > 10d)
+                    {
+                        lastLogTime = DateTime.Now;
+                        Console.WriteLine($"Guid: {taskGuid}, CalculateFileSliceHash, FileIndex: {fileIndex}, {lastLogTime}");
+                    }
                 }
+                lastLogTime = DateTime.Now;
+                Console.WriteLine($"Guid: {taskGuid}, CalculateFileSliceHash finish, FileIndex: {fileIndex}, " +
+                                  $"IsCancellationRequested: {cancellationToken.IsCancellationRequested}, {lastLogTime}");
             });
         }
         #endregion
