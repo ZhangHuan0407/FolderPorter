@@ -28,6 +28,7 @@
 - [架构支持](#架构支持)
   - [](#)
 - [版本控制软件差异](#版本控制软件差异)
+- [理论传输限制：](#理论传输限制)
 - [Windows 安装](#windows-安装)
   - [Windows 添加指令到 cmd](#windows-添加指令到-cmd)
 - [Linux 安装](#linux-安装)
@@ -72,6 +73,26 @@
 | 大文件         | Git LFS    | svn:externals | 使用了切片的方式进行文件校验、传输，直接怼上去    | 怼上去   |
 | 压缩大仓库     | 困难       | 移除旧版本    | 移除旧版本                                        | 没有仓库 |
 | 传输加密       | 存在       | 存在          | 明文密码+明文传输，或 Aes 低强度加密              | 存在     |
+
+# 理论传输限制：
+- 处于简便实现考虑，缓冲区大小是 1M 字节。Program.TransferBufferLength
+- 每个文件切片信息大约20字节，对应 1M 文件内容的 crc32。
+- 当文件较大时(10G以上)，其切片信息会分批传输，并在另一端重新组装
+- 处于简便实现考虑，使用了string拼接，这会产生大量内存拷贝。
+```
+// Program.cs ReadModelAsync
+string modelStr = null;
+int blockRemain = 0;
+do
+{
+    string recieveStr;
+    recieveStr = ByteEncoder.ReadString(buffer, out blockRemain, ref pointer);
+    ...
+    modelStr += recieveStr;
+} while (blockRemain > 0);
+```
+- 理论上，100M 大小的切片信息展开时浪费大约1G内存，单个文件大小约 4TB，已经大于多数民用硬盘的空间上限
+- 对于多文件传输场景，会分批次传输，只要磁盘空间没满、网络不断可以完成传输任务
 
 # Windows 安装
 - 解压 [下载文件](https://github.com/ZhangHuan0407/FolderPorter/releases)

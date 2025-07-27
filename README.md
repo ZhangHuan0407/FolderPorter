@@ -23,6 +23,7 @@
 - [Support](#support)
   - [](#)
 - [版本控制软件差异](#版本控制软件差异)
+- [Theoretical transmission limits:](#theoretical-transmission-limits)
 - [Windows Install](#windows-install)
   - [Windows Edit OS Path](#windows-edit-os-path)
 - [Linux Install](#linux-install)
@@ -67,6 +68,26 @@
 | Large Files                    | Git LFS     | svn:externals       | Used a slicing method for file verification and transmission, directly uploaded | Uploaded directly |
 | Compressing Large Repositories | Difficult   | Remove old versions | Remove old versions                                                             | No repository     |
 | Transmission Encryption        | Exists      | Exists              | Plain text password, plain text transmission, or AES low strength encryption    | Exists            |
+
+# Theoretical transmission limits:
+- For ease of implementation, the buffer size is 1M bytes. Program.TransferBufferLength
+- Each file slice information is approximately 20 bytes, corresponding to crc32 for 1M file contents.
+- When the file is large (more than 10G), its slice information is transmitted in batches and reassembled at the other end
+- For ease of implementation, string splicing is used, which creates a large number of memory copies.
+```
+// Program.cs ReadModelAsync
+string modelStr = null;
+int blockRemain = 0;
+do
+{
+    string recieveStr;
+    recieveStr = ByteEncoder.ReadString(buffer, out blockRemain, ref pointer);
+    ...
+    modelStr += recieveStr;
+} while (blockRemain > 0);
+```
+- Theoretically, a 100M slice information wastes about 1GB of memory when it is expanded, and the size of a single file is about 4TB, which is already larger than the space limit of most civilian hard drives
+- For multi-file transfer scenarios, the transfer will be carried out in batches, as long as the disk space is not full and the network is continuous
 
 # Windows Install
 - unzip [downloaded](https://github.com/ZhangHuan0407/FolderPorter/releases)
