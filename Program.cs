@@ -173,6 +173,8 @@ namespace FolderPorter
             int strLength = ByteEncoder.ReadInt(bytes, ref pointer);
             if (strLength < 0 || strLength > ProtocolBufferLength - 4)
                 throw new Exception("verify failed");
+            await connectWrapper.NetworkStream.ReadExactlyAsync(bytes, pointer, 4);
+            pointer += 4; // blockRemain
             await connectWrapper.NetworkStream.ReadExactlyAsync(bytes, pointer, strLength);
             pointer = 0;
             string password = ByteEncoder.ReadString(bytes, out int _, ref pointer);
