@@ -869,9 +869,9 @@ namespace FolderPorter
                 int pointer = 0;
                 int blockRemain = blockCount - blockIndex - 1;
                 if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
-                    ByteEncoder.WriteString(buffer, modelStr, blockRemain, ref pointer);
+                    ByteEncoder.WriteString(buffer, str, blockRemain, ref pointer);
                 else if (connectWrapper.EncryptedTransmission == EncryptedTransmission.AES_CBC)
-                    ByteEncoder.WriteStringWithAes(buffer, connectWrapper, modelStr, blockRemain, ref pointer);
+                    ByteEncoder.WriteStringWithAes(buffer, connectWrapper, str, blockRemain, ref pointer);
                 else
                     throw new ArgumentException($"EncryptedTransmission: {connectWrapper.EncryptedTransmission}");
                 connectWrapper.NetworkStream.Write(buffer, 0, pointer);
@@ -887,15 +887,16 @@ namespace FolderPorter
 
         private static async Task<TModel> ReadModelAsync<TModel>(ConnectWrapper connectWrapper, byte[] buffer)
         {
-            int pointer = 0;
-            await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, 4);
-            int modelStrLength = ByteEncoder.ReadInt(buffer, ref pointer);
-            await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, modelStrLength);
-            pointer = 0;
             string modelStr = null;
             int blockRemain = 0;
             do
             {
+                int pointer = 0;
+                await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, 4);
+                int blockBytesLength = ByteEncoder.ReadInt(buffer, ref pointer);
+                await connectWrapper.NetworkStream.ReadExactlyAsync(buffer, pointer, blockBytesLength + 4);
+                pointer = 0;
+
                 string recieveStr;
                 if (connectWrapper.EncryptedTransmission == EncryptedTransmission.SimplePassword)
                     recieveStr = ByteEncoder.ReadString(buffer, out blockRemain, ref pointer);
